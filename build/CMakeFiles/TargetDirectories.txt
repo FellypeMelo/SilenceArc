@@ -1,4 +1,9 @@
 G:/Programas/SilenceArc/build/CMakeFiles/test_harness.dir
+G:/Programas/SilenceArc/build/CMakeFiles/test_ui_manager.dir
 G:/Programas/SilenceArc/build/CMakeFiles/test.dir
 G:/Programas/SilenceArc/build/CMakeFiles/edit_cache.dir
 G:/Programas/SilenceArc/build/CMakeFiles/rebuild_cache.dir
+G:/Programas/SilenceArc/build/third_party/imgui/CMakeFiles/imgui.dir
+G:/Programas/SilenceArc/build/third_party/imgui/CMakeFiles/test.dir
+G:/Programas/SilenceArc/build/third_party/imgui/CMakeFiles/edit_cache.dir
+G:/Programas/SilenceArc/build/third_party/imgui/CMakeFiles/rebuild_cache.dir

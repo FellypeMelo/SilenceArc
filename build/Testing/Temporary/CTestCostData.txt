@@ -1,3 +1,2 @@
 BenchmarkHarnessTest 0 0
 ---
-BenchmarkHarnessTest

@@ -1,20 +1,3 @@
-Start testing: Mar 08 01:13 Hora oficial do Brasil
+Start testing: Mar 08 11:52 Hora oficial do Brasil
 ----------------------------------------------------------
-1/1 Testing: BenchmarkHarnessTest
-1/1 Test: BenchmarkHarnessTest
-Command: "G:/Programas/SilenceArc/build/test_harness.exe"
-Directory: G:/Programas/SilenceArc/build
-"BenchmarkHarnessTest" start time: Mar 08 01:13 Hora oficial do Brasil
-Output:
-----------------------------------------------------------
-Running Benchmark Harness TDD Verification...
-Running on: Intel(R) Arc(TM) B580 Graphics
-<end of output>
-Test time =   3.07 sec
-----------------------------------------------------------
-Test Failed.
-"BenchmarkHarnessTest" end time: Mar 08 01:13 Hora oficial do Brasil
-"BenchmarkHarnessTest" time elapsed: 00:00:03
-----------------------------------------------------------
-
-End testing: Mar 08 01:13 Hora oficial do Brasil
+End testing: Mar 08 11:52 Hora oficial do Brasil
