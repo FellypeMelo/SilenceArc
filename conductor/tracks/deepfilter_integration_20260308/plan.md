@@ -7,12 +7,12 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Research' (Protocol in workflow.md)
 
 ## Phase 2: TDD Infrastructure and RED Phase
-- [ ] Task: Create initial failing tests for noise suppression integration.
-    - [ ] Write unit tests in `tests/test_noise_suppression.cpp` that attempt to load the model and fail.
-    - [ ] Write tests for the asynchronous callback mechanism (mocking audio buffers).
-- [ ] Task: Define RED phase for UI telemetry feedback.
-    - [ ] Write tests in `tests/test_ui_manager.cpp` verifying telemetry updates (should fail initially).
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: RED Phase' (Protocol in workflow.md)
+- [x] Task: Create initial failing tests for noise suppression integration.
+    - [x] Write unit tests in `tests/test_noise_suppression.cpp` that attempt to load the model and fail.
+    - [x] Write tests for the asynchronous callback mechanism (mocking audio buffers).
+- [x] Task: Define RED phase for UI telemetry feedback.
+    - [x] Write tests in `tests/test_ui_manager.cpp` verifying telemetry updates (should fail initially).
+- [x] Task: Conductor - User Manual Verification 'Phase 2: RED Phase' (Protocol in workflow.md)
 
 ## Phase 3: Integration Implementation (GREEN Phase)
 - [ ] Task: Finalize `deep_filter_adapter.cpp` implementation.
