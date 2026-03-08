@@ -186,6 +186,112 @@ void UIManager::Shutdown() {
   is_initialized_ = false;
 }
 
+void UIManager::BeginFrame() {
+  if (!is_initialized_) {
+    return;
+  }
+  ImGui_ImplDX11_NewFrame();
+  ImGui_ImplWin32_NewFrame();
+  ImGui::NewFrame();
+}
+
+void UIManager::Render() {
+  if (!is_initialized_) {
+    return;
+  }
+
+  ImGui::SetNextWindowPos(ImVec2(0, 0));
+  ImGui::SetNextWindowSize(ImVec2((float)width_, (float)height_));
+  ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
+
+  ImGui::Begin("Silence Arc - Main", nullptr, window_flags);
+
+  // 1. Header
+  ImGui::TextColored(ImVec4(0.0f, 0.5f, 1.0f, 1.0f), "SILENCE ARC");
+  ImGui::Separator();
+
+  // 2. Main Controls
+  if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::Checkbox("Noise Suppression", &state_.noise_suppression_enabled);
+    ImGui::Checkbox("Voice Enhancement", &state_.voice_enhancement_enabled);
+  }
+
+  // 3. Monitoring
+  if (ImGui::CollapsingHeader("Monitoring", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::Text("Input Level");
+    ImGui::ProgressBar(state_.input_level, ImVec2(-1.0f, 0.0f));
+
+    ImGui::Text("Output Level");
+    ImGui::ProgressBar(state_.output_level, ImVec2(-1.0f, 0.0f));
+
+    ImGui::Text("Suppression Depth");
+    ImGui::ProgressBar(state_.suppression_depth, ImVec2(-1.0f, 0.0f));
+    
+    if (state_.db_reduction > 0.0f) {
+        ImGui::Text("Reduction: %.1f dB", state_.db_reduction);
+    }
+  }
+
+  // 4. Configuration
+  if (ImGui::CollapsingHeader("Configuration")) {
+    const char* apis[] = { "WASAPI", "ASIO" };
+    ImGui::Combo("Audio API", &state_.selected_audio_api, apis, IM_ARRAYSIZE(apis));
+
+    if (ImGui::BeginCombo("Input Device", state_.selected_input_device >= 0 ? state_.input_devices[state_.selected_input_device].name.c_str() : "Select...")) {
+      for (int i = 0; i < (int)state_.input_devices.size(); i++) {
+        bool is_selected = (state_.selected_input_device == i);
+        if (ImGui::Selectable(state_.input_devices[i].name.c_str(), is_selected)) {
+          state_.selected_input_device = i;
+        }
+        if (is_selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+
+    if (ImGui::BeginCombo("Output Device", state_.selected_output_device >= 0 ? state_.output_devices[state_.selected_output_device].name.c_str() : "Select...")) {
+      for (int i = 0; i < (int)state_.output_devices.size(); i++) {
+        bool is_selected = (state_.selected_output_device == i);
+        if (ImGui::Selectable(state_.output_devices[i].name.c_str(), is_selected)) {
+          state_.selected_output_device = i;
+        }
+        if (is_selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+
+    if (ImGui::SliderFloat("Window Transparency", &transparency_, 0.1f, 1.0f, "%.2f")) {
+      SetTransparency(transparency_);
+    }
+  }
+
+  // 5. Telemetry (Brief for now)
+  if (ImGui::CollapsingHeader("Telemetry")) {
+    ImGui::Text("GPU Util: %.1f%%", state_.gpu_utilization * 100.0f);
+    ImGui::Text("Latency: %.2f ms", state_.processing_latency_ms);
+    ImGui::Text("VRAM: %.1f MB", state_.memory_footprint_mb);
+  }
+
+  ImGui::End();
+}
+
+void UIManager::EndFrame() {
+  if (!is_initialized_) {
+    return;
+  }
+  ImGui::Render();
+  
+  const float clear_color_with_alpha[4] = { 0.45f * transparency_, 0.55f * transparency_, 0.60f * transparency_, transparency_ };
+  static_cast<ID3D11DeviceContext*>(device_context_)->OMSetRenderTargets(1, reinterpret_cast<ID3D11RenderTargetView**>(&render_target_view_), nullptr);
+  static_cast<ID3D11DeviceContext*>(device_context_)->ClearRenderTargetView(static_cast<ID3D11RenderTargetView*>(render_target_view_), clear_color_with_alpha);
+  ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+  static_cast<IDXGISwapChain*>(swap_chain_)->Present(1, 0);
+}
+
 void UIManager::ShowWindow(bool show) {
   if (!hwnd_) {
     return;
@@ -201,13 +307,38 @@ void UIManager::ShowWindow(bool show) {
   }
 }
 
+void UIManager::UpdateTelemetry(domain::TelemetryData data) {
+    state_.gpu_utilization = data.gpu_utilization;
+    state_.processing_latency_ms = data.processing_latency_ms;
+    state_.memory_footprint_mb = data.memory_footprint_mb;
+}
+
+void UIManager::UpdateSignalLevels(float input, float output, float reduction) {
+    state_.input_level = input;
+    state_.output_level = output;
+    state_.db_reduction = reduction;
+}
+
+void UIManager::SetTransparency(float alpha) {
+  transparency_ = alpha;
+  if (hwnd_) {
+    HWND native_hwnd = static_cast<HWND>(hwnd_);
+    if (alpha < 1.0f) {
+      ::SetWindowLong(native_hwnd, GWL_EXSTYLE, ::GetWindowLong(native_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+      ::SetLayeredWindowAttributes(native_hwnd, 0, (BYTE)(255 * alpha), LWA_ALPHA);
+    } else {
+      ::SetWindowLong(native_hwnd, GWL_EXSTYLE, ::GetWindowLong(native_hwnd, GWL_EXSTYLE) & ~WS_EX_LAYERED);
+    }
+  }
+}
+
 void UIManager::CreateTrayIcon() {
   NOTIFYICONDATAW nid = { sizeof(nid) };
   nid.hWnd = static_cast<HWND>(hwnd_);
   nid.uID = ID_TRAY_APP_ICON;
   nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
   nid.uCallbackMessage = WM_TRAYICON;
-  nid.hIcon = LoadIcon(NULL, IDI_APPLICATION); // Generic icon for now
+  nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
   wcscpy_s(nid.szTip, L"Silence Arc");
   Shell_NotifyIconW(NIM_ADD, &nid);
 }
@@ -291,141 +422,6 @@ void UIManager::CleanupRenderTarget() {
     static_cast<ID3D11RenderTargetView*>(render_target_view_)->Release();
     render_target_view_ = nullptr;
   }
-}
-
-bool UIManager::ShouldClose() const {
-  MSG msg;
-  while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
-    ::TranslateMessage(&msg);
-    ::DispatchMessage(&msg);
-    if (msg.message == WM_QUIT) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void UIManager::SetTransparency(float alpha) {
-  transparency_ = alpha;
-  if (hwnd_) {
-    HWND native_hwnd = static_cast<HWND>(hwnd_);
-    // Simple alpha blending for the whole window
-    if (alpha < 1.0f) {
-      ::SetWindowLong(native_hwnd, GWL_EXSTYLE, ::GetWindowLong(native_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
-      ::SetLayeredWindowAttributes(native_hwnd, 0, (BYTE)(255 * alpha), LWA_ALPHA);
-    } else {
-      ::SetWindowLong(native_hwnd, GWL_EXSTYLE, ::GetWindowLong(native_hwnd, GWL_EXSTYLE) & ~WS_EX_LAYERED);
-    }
-  }
-}
-
-void UIManager::UpdateTelemetry(domain::TelemetryData data) {
-  state_.gpu_utilization = data.gpu_utilization;
-  state_.processing_latency_ms = data.processing_latency_ms;
-  state_.memory_footprint_mb = data.memory_footprint_mb;
-}
-
-void UIManager::BeginFrame() {
-  if (!is_initialized_) {
-    return;
-  }
-  ImGui_ImplDX11_NewFrame();
-  ImGui_ImplWin32_NewFrame();
-  ImGui::NewFrame();
-}
-
-void UIManager::Render() {
-  if (!is_initialized_) {
-    return;
-  }
-
-  ImGui::SetNextWindowPos(ImVec2(0, 0));
-  ImGui::SetNextWindowSize(ImVec2((float)width_, (float)height_));
-  ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
-
-  ImGui::Begin("Silence Arc - Main", nullptr, window_flags);
-
-  // 1. Header
-  ImGui::TextColored(ImVec4(0.0f, 0.5f, 1.0f, 1.0f), "SILENCE ARC");
-  ImGui::Separator();
-
-  // 2. Main Controls
-  if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::Checkbox("Noise Suppression", &state_.noise_suppression_enabled);
-    ImGui::Checkbox("Voice Enhancement", &state_.voice_enhancement_enabled);
-  }
-
-  // 3. Monitoring
-  if (ImGui::CollapsingHeader("Monitoring", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::Text("Input Level");
-    ImGui::ProgressBar(state_.input_level, ImVec2(-1.0f, 0.0f));
-
-    ImGui::Text("Output Level");
-    ImGui::ProgressBar(state_.output_level, ImVec2(-1.0f, 0.0f));
-
-    ImGui::Text("Suppression Depth");
-    ImGui::ProgressBar(state_.suppression_depth, ImVec2(-1.0f, 0.0f));
-  }
-
-  // 4. Configuration
-  if (ImGui::CollapsingHeader("Configuration")) {
-    const char* apis[] = { "WASAPI", "ASIO" };
-    ImGui::Combo("Audio API", &state_.selected_audio_api, apis, IM_ARRAYSIZE(apis));
-
-    if (ImGui::BeginCombo("Input Device", state_.selected_input_device >= 0 ? state_.input_devices[state_.selected_input_device].name.c_str() : "Select...")) {
-      for (int i = 0; i < (int)state_.input_devices.size(); i++) {
-        bool is_selected = (state_.selected_input_device == i);
-        if (ImGui::Selectable(state_.input_devices[i].name.c_str(), is_selected)) {
-          state_.selected_input_device = i;
-        }
-        if (is_selected) {
-          ImGui::SetItemDefaultFocus();
-        }
-      }
-      ImGui::EndCombo();
-    }
-
-    if (ImGui::BeginCombo("Output Device", state_.selected_output_device >= 0 ? state_.output_devices[state_.selected_output_device].name.c_str() : "Select...")) {
-      for (int i = 0; i < (int)state_.output_devices.size(); i++) {
-        bool is_selected = (state_.selected_output_device == i);
-        if (ImGui::Selectable(state_.output_devices[i].name.c_str(), is_selected)) {
-          state_.selected_output_device = i;
-        }
-        if (is_selected) {
-          ImGui::SetItemDefaultFocus();
-        }
-      }
-      ImGui::EndCombo();
-    }
-
-    if (ImGui::SliderFloat("Window Transparency", &transparency_, 0.1f, 1.0f, "%.2f")) {
-      SetTransparency(transparency_);
-    }
-  }
-
-  // 5. Telemetry (Brief for now)
-  if (ImGui::CollapsingHeader("Telemetry")) {
-    ImGui::Text("GPU Util: %.1f%%", state_.gpu_utilization * 100.0f);
-    ImGui::Text("Latency: %.2f ms", state_.processing_latency_ms);
-    ImGui::Text("VRAM: %.1f MB", state_.memory_footprint_mb);
-  }
-
-  ImGui::End();
-}
-
-
-void UIManager::EndFrame() {
-  if (!is_initialized_) {
-    return;
-  }
-  ImGui::Render();
-  
-  const float clear_color_with_alpha[4] = { 0.45f * transparency_, 0.55f * transparency_, 0.60f * transparency_, transparency_ };
-  static_cast<ID3D11DeviceContext*>(device_context_)->OMSetRenderTargets(1, reinterpret_cast<ID3D11RenderTargetView**>(&render_target_view_), nullptr);
-  static_cast<ID3D11DeviceContext*>(device_context_)->ClearRenderTargetView(static_cast<ID3D11RenderTargetView*>(render_target_view_), clear_color_with_alpha);
-  ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-  static_cast<IDXGISwapChain*>(swap_chain_)->Present(1, 0);
 }
 
 } // namespace infrastructure

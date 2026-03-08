@@ -27,6 +27,7 @@ public:
     domain::UIState& GetState() { return state_; }
 
     void UpdateTelemetry(domain::TelemetryData data);
+    void UpdateSignalLevels(float input, float output, float reduction);
 
     void ShowWindow(bool show);
     bool IsMinimizedToTray() const { return is_minimized_to_tray_; }

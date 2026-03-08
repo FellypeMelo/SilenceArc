@@ -1,6 +1,7 @@
 #include "silence_arc/infrastructure/deep_filter_adapter.h"
 #include "deep_filter.h"
 #include <stdexcept>
+#include <filesystem>
 
 namespace silence_arc {
 namespace infrastructure {
@@ -24,7 +25,12 @@ bool DeepFilterAdapter::Init(const std::string& model_path) {
         impl_->state = nullptr;
     }
 
+    if (!std::filesystem::exists(model_path)) {
+        return false;
+    }
+
     // Default attenuation limit 100.0, log level None (nullptr)
+    // Note: df_create might still panic if the file is not a valid model.
     impl_->state = df_create(model_path.c_str(), 100.0f, nullptr);
     if (!impl_->state) {
         return false;

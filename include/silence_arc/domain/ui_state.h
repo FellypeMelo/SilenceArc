@@ -27,6 +27,7 @@ struct UIState {
     float input_level = 0.0f;
     float output_level = 0.0f;
     float suppression_depth = 0.0f;
+    float db_reduction = 0.0f;
 
     // Telemetry
     float gpu_utilization = 0.0f;

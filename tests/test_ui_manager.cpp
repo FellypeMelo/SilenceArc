@@ -92,10 +92,25 @@ void TestTrayIntegration() {
     }
 }
 
+void TestSignalFeedback() {
+    std::cout << "Running TestSignalFeedback..." << std::endl;
+    UIManager ui;
+    
+    ui.UpdateSignalLevels(0.75f, 0.35f, 15.0f); // input, output, reduction
+    
+    auto& state = ui.GetState();
+    assert(state.input_level == 0.75f);
+    assert(state.output_level == 0.35f);
+    assert(state.db_reduction == 15.0f);
+    
+    std::cout << "TestSignalFeedback passed." << std::endl;
+}
+
 int main() {
     TestUIInitialization();
     TestUIState();
     TestTelemetryUpdate();
+    TestSignalFeedback();
     TestTrayIntegration();
     TestWindowCreation();
     std::cout << "All UIManager tests completed!" << std::endl;
