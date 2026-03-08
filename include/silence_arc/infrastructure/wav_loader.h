@@ -47,6 +47,43 @@ public:
     }
 };
 
+class WavWriter {
+public:
+    static bool Save(const std::string& file_path, const WavData& data) {
+        std::ofstream file(file_path, std::ios::binary);
+        if (!file.is_open()) return false;
+
+        uint32_t data_size = static_cast<uint32_t>(data.samples.size() * 2);
+        uint32_t file_size = 36 + data_size;
+
+        file.write("RIFF", 4);
+        file.write(reinterpret_cast<const char*>(&file_size), 4);
+        file.write("WAVE", 4);
+        file.write("fmt ", 4);
+        uint32_t fmt_size = 16;
+        file.write(reinterpret_cast<const char*>(&fmt_size), 4);
+        uint16_t audio_format = 1; // PCM
+        file.write(reinterpret_cast<const char*>(&audio_format), 2);
+        file.write(reinterpret_cast<const char*>(&data.num_channels), 2);
+        file.write(reinterpret_cast<const char*>(&data.sample_rate), 4);
+        uint32_t byte_rate = data.sample_rate * data.num_channels * 2;
+        file.write(reinterpret_cast<const char*>(&byte_rate), 4);
+        uint16_t block_align = data.num_channels * 2;
+        file.write(reinterpret_cast<const char*>(&block_align), 2);
+        uint16_t bits_per_sample = 16;
+        file.write(reinterpret_cast<const char*>(&bits_per_sample), 2);
+        file.write("data", 4);
+        file.write(reinterpret_cast<const char*>(&data_size), 4);
+
+        for (float sample : data.samples) {
+            int16_t val = static_cast<int16_t>(std::max(-1.0f, std::min(1.0f, sample)) * 32767.0f);
+            file.write(reinterpret_cast<const char*>(&val), 2);
+        }
+
+        return true;
+    }
+};
+
 } // namespace infrastructure
 } // namespace silence_arc
 

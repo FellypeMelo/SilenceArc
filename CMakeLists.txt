@@ -87,6 +87,16 @@ target_link_libraries(test_e2e_loopback PRIVATE
     silence_arc_infra
 )
 
+# E2E Samples Test (GTest)
+add_executable(test_e2e_samples
+    tests/test_e2e_samples.cpp
+)
+target_include_directories(test_e2e_samples PRIVATE tests)
+target_link_libraries(test_e2e_samples PRIVATE 
+    GTest::gtest_main 
+    silence_arc_infra
+)
+
 # Main Application
 add_executable(silence_arc src/main.cpp)
 target_link_libraries(silence_arc PRIVATE silence_arc_infra)
@@ -97,3 +107,4 @@ add_test(NAME UIManagerTest COMMAND test_ui_manager)
 add_test(NAME NoiseSuppressionTest COMMAND test_noise_suppression)
 add_test(NAME AudioPipelineTest COMMAND test_audio_pipeline)
 add_test(NAME E2ELoopbackTest COMMAND test_e2e_loopback)
+add_test(NAME E2ESamplesTest COMMAND test_e2e_samples)
