@@ -8,7 +8,11 @@ namespace silence_arc {
 namespace testing {
 
 std::string GetModelPath() {
-    auto path = std::filesystem::current_path() / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
+    auto path = std::filesystem::current_path();
+    if (path.filename() == "build") {
+        path = path.parent_path();
+    }
+    path = path / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
     return path.string();
 }
 

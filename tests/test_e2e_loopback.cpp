@@ -19,13 +19,18 @@ float CalculateRMS(const std::vector<float>& samples) {
 }
 
 TEST(E2ELoopbackTest, NoiseReductionVerification) {
+    auto current_path = std::filesystem::current_path();
+    if (current_path.filename() == "build") {
+        current_path = current_path.parent_path();
+    }
+
     infrastructure::WavData noise_data;
-    auto noise_path = std::filesystem::current_path() / "tests" / "samples" / "High-Noise.wav";
+    auto noise_path = current_path / "tests" / "samples" / "High-Noise.wav";
     ASSERT_TRUE(infrastructure::WavLoader::Load(noise_path.string(), noise_data));
     ASSERT_EQ(noise_data.sample_rate, 48000);
 
     infrastructure::DeepFilterAdapter suppressor;
-    auto model_path = std::filesystem::current_path() / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
+    auto model_path = current_path / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
     ASSERT_TRUE(suppressor.Init(model_path.string()));
 
     infrastructure::AsyncAudioPipeline pipeline;

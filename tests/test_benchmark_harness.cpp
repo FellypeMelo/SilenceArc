@@ -13,10 +13,12 @@ void PrintResult(const std::string& name, const silence_arc::BenchmarkResult& re
 
 int main() {
     std::cout << "Running Silence Arc Candidate Benchmarks..." << std::endl;
+    std::cout.flush();
 
     silence_arc::BenchmarkHarness harness;
     if (!harness.Init()) {
         std::cerr << "Failed to initialize SYCL." << std::endl;
+        std::cerr.flush();
         return 1;
     }
 
