@@ -6,8 +6,3 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [x] **Track: Find and Validate Noise Suppression Model**
   *Link: [./tracks/model_selection_20260308/](./tracks/model_selection_20260308/)*
-
----
-
-- [x] **Track: Implement the UI**
-  *Link: [./tracks/ui_implementation_20260308/](./tracks/ui_implementation_20260308/)*
