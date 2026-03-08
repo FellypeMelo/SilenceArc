@@ -4,5 +4,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track: Find and Validate Noise Suppression Model**
+- [~] **Track: Find and Validate Noise Suppression Model**
   *Link: [./tracks/model_selection_20260308/](./tracks/model_selection_20260308/)*
