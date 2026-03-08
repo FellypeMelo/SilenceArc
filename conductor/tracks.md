@@ -6,8 +6,3 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [x] **Track: Find and Validate Noise Suppression Model**
   *Link: [./tracks/model_selection_20260308/](./tracks/model_selection_20260308/)*
-
----
-
-- [x] **Track: Unite the DeepFilterNet With The Curently App and Lets Make e2e test**
-*Link: [./tracks/deepfilter_integration_20260308/](./tracks/deepfilter_integration_20260308/)*
