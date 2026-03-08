@@ -1,10 +1,10 @@
 # Implementation Plan - DeepFilterNet Integration and E2E Testing
 
 ## Phase 1: Research and Model Triage
-- [ ] Task: Research current DeepFilterNet models and select optimal weights for Intel Arc.
-    - [ ] Compare DeepFilterNet2 vs DeepFilterNet3 latency and quality.
-    - [ ] Verify model asset paths and loading mechanism in `deep_filter_adapter`.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Research' (Protocol in workflow.md)
+- [x] Task: Research current DeepFilterNet models and select optimal weights for Intel Arc.
+    - [x] Compare DeepFilterNet2 vs DeepFilterNet3 latency and quality.
+    - [x] Verify model asset paths and loading mechanism in `deep_filter_adapter`.
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Research' (Protocol in workflow.md)
 
 ## Phase 2: TDD Infrastructure and RED Phase
 - [ ] Task: Create initial failing tests for noise suppression integration.
