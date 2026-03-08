@@ -1,4 +1,4 @@
-# Implementation Plan: Find and Validate Noise Suppression Model
+# [x] Implementation Plan: Find and Validate Noise Suppression Model
 
 ## Phase 1: Research & Candidate Identification
 - [x] Task: Research state-of-the-art real-time noise suppression models compatible with C++/SYCL.
@@ -13,6 +13,6 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Benchmarking' (Protocol in workflow.md)
 
 ## Phase 3: Final Selection & Arch Record
-- [~] Task: Perform subjective audio quality tests on prioritized candidates.
-- [ ] Task: Draft Architecture Decision Record (ADR) for the selected model.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Selection' (Protocol in workflow.md)
+- [x] Task: Perform subjective audio quality tests on prioritized candidates.
+- [x] Task: Draft Architecture Decision Record (ADR) for the selected model.
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Selection' (Protocol in workflow.md)
