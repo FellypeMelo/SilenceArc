@@ -53,8 +53,4 @@ public:
 } // namespace tests
 } // namespace silence_arc
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 #endif // SILENCE_ARC_TESTS_UTILS_AUDIO_GEN_H_

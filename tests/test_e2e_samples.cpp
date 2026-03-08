@@ -121,5 +121,39 @@ TEST_F(E2ESamplesTest, SignalIntegrityTest) {
     EXPECT_LT(rmse, 0.05f);
 }
 
+TEST_F(E2ESamplesTest, GenerateProcessedSamples) {
+    DeepFilterAdapter adapter;
+    ASSERT_TRUE(adapter.Init(model_path));
+
+    auto samples_dir = std::filesystem::current_path();
+    if (samples_dir.filename() == "build") {
+        samples_dir = samples_dir.parent_path();
+    }
+    samples_dir = samples_dir / "tests" / "samples";
+
+    std::vector<std::string> sample_files = {"High-Noise.wav", "Low-Noise.wav", "No-Noise.wav"};
+    size_t frame_size = adapter.GetFrameLength();
+
+    for (const auto& file : sample_files) {
+        WavData data;
+        if (!WavLoader::Load((samples_dir / file).string(), data)) {
+            std::cout << "Could not load " << file << std::endl;
+            continue;
+        }
+
+        std::vector<float> processed(data.samples.size(), 0.0f);
+        for (size_t i = 0; i + frame_size <= data.samples.size(); i += frame_size) {
+            adapter.ProcessFrame(&data.samples[i], &processed[i]);
+        }
+
+        WavData out_data = data;
+        out_data.samples = processed;
+        
+        std::string out_name = file.substr(0, file.find_last_of('.')) + "_processed.wav";
+        WavWriter::Save((samples_dir / out_name).string(), out_data);
+        std::cout << "Saved processed sample: " << out_name << std::endl;
+    }
+}
+
 } // namespace testing
 } // namespace silence_arc
