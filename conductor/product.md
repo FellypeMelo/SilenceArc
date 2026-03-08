@@ -24,4 +24,4 @@ Silence Arc is a streamlined, real-time noise suppression and voice enhancement 
 - **Real-Time Noise Suppression:** Advanced AI-driven removal of background noise.
 - **Voice Enhancement:** Intelligent boosting of vocal frequencies to improve clarity and presence.
 - **Custom Model Support:** Flexibility to integrate and use specialized AI models beyond standard defaults.
-- **Minimalist GUI:** A lightweight, unobtrusive interface for quick setup and status monitoring.
+- **Minimalist GUI:** A lightweight, unobtrusive interface featuring real-time signal monitoring, hardware telemetry readouts, and Windows system tray integration for seamless background operation.

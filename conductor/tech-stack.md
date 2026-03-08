@@ -10,7 +10,7 @@
 - **Rationale:** Native acceleration for Intel Arc GPUs without the overhead or constraints of OpenVino. Allows for custom compute kernels for real-time DSP.
 
 ## Audio Processing
-- **Primary API:** WASAPI (Windows Audio Session API)
+- **Audio APIs:** WASAPI (Windows Audio Session API) and ASIO (Audio Stream Input/Output).
 - **Mode:** Exclusive Mode (where possible) for ultra-low latency.
 - **Rationale:** Native Windows standard providing high-fidelity, low-latency audio capture and playback.
 
