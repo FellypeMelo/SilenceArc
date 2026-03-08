@@ -9,5 +9,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track: Unite the DeepFilterNet With The Curently App and Lets Make e2e test**
+- [x] **Track: Unite the DeepFilterNet With The Curently App and Lets Make e2e test**
 *Link: [./tracks/deepfilter_integration_20260308/](./tracks/deepfilter_integration_20260308/)*
