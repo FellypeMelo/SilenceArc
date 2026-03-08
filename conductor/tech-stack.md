@@ -9,6 +9,11 @@
 - **Direct Hardware Access:** Level Zero (via SYCL)
 - **Rationale:** Native acceleration for Intel Arc GPUs without the overhead or constraints of OpenVino. Allows for custom compute kernels for real-time DSP.
 
+## Noise Suppression Engine
+- **Primary Framework:** DeepFilterNet (Rust-based)
+- **Integration:** C-API Bridge with C++ Adapter
+- **Rationale:** SOTA perceptual quality, low complexity, and native support for 48kHz audio.
+
 ## Audio Processing
 - **Audio APIs:** WASAPI (Windows Audio Session API) and ASIO (Audio Stream Input/Output).
 - **Mode:** Exclusive Mode (where possible) for ultra-low latency.
