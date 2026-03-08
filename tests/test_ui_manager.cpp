@@ -2,7 +2,7 @@
 #include <iostream>
 #include <cassert>
 
-using namespace silence_arc::infrastructure;
+using silence_arc::infrastructure::UIManager;
 
 void TestUIInitialization() {
     std::cout << "Running TestUIInitialization..." << std::endl;

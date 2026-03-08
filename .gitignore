@@ -1,0 +1,34 @@
+# Compiled binaries
+bin/
+build/
+lib/
+
+# MSVC
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
+*.pdb
+*.ilk
+*.exe
+*.obj
+*.log
+*.tlog
+*.lastbuildstate
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeSettings.json
+cmake_install.cmake
+install/
+CTestTestfile.cmake
+Makefile
+build.ninja
+.ninja_deps
+.ninja_log
+
+# OS generated files
+.DS_Store
+Thumbs.db
