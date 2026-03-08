@@ -78,8 +78,18 @@ target_link_libraries(test_audio_pipeline PRIVATE
     silence_arc_infra
 )
 
+# E2E Loopback Test (GTest)
+add_executable(test_e2e_loopback
+    tests/test_e2e_loopback.cpp
+)
+target_link_libraries(test_e2e_loopback PRIVATE 
+    GTest::gtest_main 
+    silence_arc_infra
+)
+
 enable_testing()
 add_test(NAME BenchmarkHarnessTest COMMAND test_harness)
 add_test(NAME UIManagerTest COMMAND test_ui_manager)
 add_test(NAME NoiseSuppressionTest COMMAND test_noise_suppression)
 add_test(NAME AudioPipelineTest COMMAND test_audio_pipeline)
+add_test(NAME E2ELoopbackTest COMMAND test_e2e_loopback)

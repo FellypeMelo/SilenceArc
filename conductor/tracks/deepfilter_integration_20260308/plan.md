@@ -24,14 +24,14 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Integration Implementation' (Protocol in workflow.md)
 
 ## Phase 4: E2E Test Suite and Audio Loopback
-- [ ] Task: Implement Automated Audio Loopback Test.
-    - [ ] Load custom WAV files as input source.
-    - [ ] Process through the async pipeline and capture output.
-    - [ ] Validate noise floor reduction and signal integrity.
-- [ ] Task: Latency Benchmarking Implementation.
-    - [ ] Implement high-precision timing for the capture-to-render loop.
-    - [ ] Verify latency stays below the 10ms threshold.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: E2E Testing' (Protocol in workflow.md)
+- [x] Task: Implement Automated Audio Loopback Test.
+    - [x] Load custom WAV files as input source.
+    - [x] Process through the async pipeline and capture output.
+    - [x] Validate noise floor reduction and signal integrity.
+- [x] Task: Latency Benchmarking Implementation.
+    - [x] Implement high-precision timing for the capture-to-render loop.
+    - [x] Verify latency stays below the 10ms threshold.
+- [x] Task: Conductor - User Manual Verification 'Phase 4: E2E Testing' (Protocol in workflow.md)
 
 ## Phase 5: UI Refinement and Final Verification
 - [ ] Task: Update `ui_manager` for real-time telemetry.
