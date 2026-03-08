@@ -186,6 +186,18 @@ void UIManager::Shutdown() {
   is_initialized_ = false;
 }
 
+bool UIManager::ShouldClose() const {
+  MSG msg;
+  while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
+    ::TranslateMessage(&msg);
+    ::DispatchMessage(&msg);
+    if (msg.message == WM_QUIT) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void UIManager::BeginFrame() {
   if (!is_initialized_) {
     return;

@@ -87,6 +87,10 @@ target_link_libraries(test_e2e_loopback PRIVATE
     silence_arc_infra
 )
 
+# Main Application
+add_executable(silence_arc src/main.cpp)
+target_link_libraries(silence_arc PRIVATE silence_arc_infra)
+
 enable_testing()
 add_test(NAME BenchmarkHarnessTest COMMAND test_harness)
 add_test(NAME UIManagerTest COMMAND test_ui_manager)
