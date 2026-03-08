@@ -36,6 +36,7 @@ set_target_properties(df_shared PROPERTIES
 add_library(silence_arc_infra STATIC
     src/infrastructure/ui_manager.cpp
     src/infrastructure/deep_filter_adapter.cpp
+    src/infrastructure/async_audio_pipeline.cpp
 )
 target_link_libraries(silence_arc_infra PUBLIC imgui df_shared)
 
@@ -68,7 +69,17 @@ target_link_libraries(test_noise_suppression PRIVATE
     silence_arc_infra
 )
 
+# Audio Pipeline Test (GTest)
+add_executable(test_audio_pipeline
+    tests/test_audio_pipeline.cpp
+)
+target_link_libraries(test_audio_pipeline PRIVATE 
+    GTest::gtest_main 
+    silence_arc_infra
+)
+
 enable_testing()
 add_test(NAME BenchmarkHarnessTest COMMAND test_harness)
 add_test(NAME UIManagerTest COMMAND test_ui_manager)
 add_test(NAME NoiseSuppressionTest COMMAND test_noise_suppression)
+add_test(NAME AudioPipelineTest COMMAND test_audio_pipeline)

@@ -18,10 +18,10 @@
 - [x] Task: Finalize `deep_filter_adapter.cpp` implementation.
     - [x] Implement robust model loading and buffer processing.
     - [x] Pass initial RED tests from Phase 2.
-- [ ] Task: Implement Asynchronous Audio Callback.
-    - [ ] Create a high-priority thread for buffer processing.
-    - [ ] Ensure thread-safe communication between the audio callback and the GUI.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Integration Implementation' (Protocol in workflow.md)
+- [x] Task: Implement Asynchronous Audio Callback.
+    - [x] Create a high-priority thread for buffer processing.
+    - [x] Ensure thread-safe communication between the audio callback and the GUI.
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Integration Implementation' (Protocol in workflow.md)
 
 ## Phase 4: E2E Test Suite and Audio Loopback
 - [ ] Task: Implement Automated Audio Loopback Test.
