@@ -23,3 +23,6 @@
 - [x] Task: Implement Windows System Tray integration (Minimize to tray, restore, context menu).
 - [x] Task: Final aesthetic polish and resource overhead audit.
 - [x] Task: Conductor - User Manual Verification 'Phase 4: Integration' (Protocol in workflow.md)
+
+## Phase: Review Fixes
+- [x] Task: Apply review suggestions 9dc604b
