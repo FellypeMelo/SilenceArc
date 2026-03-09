@@ -14,6 +14,7 @@ public:
     virtual bool Init(const std::string& model_path) = 0;
     virtual size_t GetFrameLength() const = 0;
     virtual float ProcessFrame(const float* input, float* output) = 0;
+    virtual void SetAttenuationLimit(float limit_db) = 0;
 };
 
 } // namespace domain

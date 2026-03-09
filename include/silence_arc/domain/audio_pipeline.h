@@ -17,7 +17,7 @@ class IAudioPipeline {
 public:
     virtual ~IAudioPipeline() = default;
 
-    virtual bool Start() = 0;
+    virtual bool Start(const std::string& input_device_id = "", const std::string& output_device_id = "") = 0;
     virtual void Stop() = 0;
     virtual bool IsRunning() const = 0;
 

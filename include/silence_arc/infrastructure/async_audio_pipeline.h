@@ -14,7 +14,7 @@ public:
     AsyncAudioPipeline();
     ~AsyncAudioPipeline() override;
 
-    bool Start() override;
+    bool Start(const std::string& input_device_id = "", const std::string& output_device_id = "") override;
     void Stop() override;
     bool IsRunning() const override { return is_running_; }
 

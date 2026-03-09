@@ -10,8 +10,8 @@ AsyncAudioPipeline::~AsyncAudioPipeline() {
     Stop();
 }
 
-bool AsyncAudioPipeline::Start() {
-    if (is_running_) return true;
+bool AsyncAudioPipeline::Start(const std::string& input_device_id, const std::string& output_device_id) {
+    if (is_running_) return false;
     is_running_ = true;
     worker_thread_ = std::thread(&AsyncAudioPipeline::ThreadLoop, this);
     

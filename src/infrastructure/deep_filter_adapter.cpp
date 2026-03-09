@@ -29,9 +29,9 @@ bool DeepFilterAdapter::Init(const std::string& model_path) {
         return false;
     }
 
-    // Default attenuation limit 100.0, log level None (nullptr)
+    // Default attenuation limit 20.0 for a more natural sound, instead of 100.0
     // Note: df_create might still panic if the file is not a valid model.
-    impl_->state = df_create(model_path.c_str(), 100.0f, nullptr);
+    impl_->state = df_create(model_path.c_str(), 20.0f, nullptr);
     if (!impl_->state) {
         return false;
     }
@@ -52,6 +52,12 @@ float DeepFilterAdapter::ProcessFrame(const float* input, float* output) {
     // (though it's usually treated as const internally if not used for in-place)
     // Looking at capi.rs: input: *mut c_float
     return df_process_frame(impl_->state, const_cast<float*>(input), output);
+}
+
+void DeepFilterAdapter::SetAttenuationLimit(float limit_db) {
+    if (impl_->state) {
+        df_set_atten_lim(impl_->state, limit_db);
+    }
 }
 
 } // namespace infrastructure

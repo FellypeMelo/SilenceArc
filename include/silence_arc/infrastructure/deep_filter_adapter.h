@@ -16,6 +16,7 @@ public:
     bool Init(const std::string& model_path) override;
     size_t GetFrameLength() const override;
     float ProcessFrame(const float* input, float* output) override;
+    void SetAttenuationLimit(float limit_db) override;
 
 private:
     struct Impl;
