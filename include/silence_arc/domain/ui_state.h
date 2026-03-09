@@ -35,6 +35,7 @@ struct UIState {
     float memory_footprint_mb = 0.0f;
 
     // Configuration
+    float suppression_limit_db = 20.0f; // 0 (min) to 100 (max)
     int selected_audio_api = 0; // 0: WASAPI, 1: ASIO
     int selected_input_device = -1;
     int selected_output_device = -1;
