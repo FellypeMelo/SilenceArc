@@ -12,3 +12,7 @@
 ## Management
 - [Tracks Registry](./tracks.md)
 - [Tracks Directory](./tracks/)
+
+## Active Tracks
+- [intel-arc-gpu-sycl_20260309: Intel Arc GPU Optimization (SYCL)](./tracks/intel-arc-gpu-sycl_20260309/index.md)
+
