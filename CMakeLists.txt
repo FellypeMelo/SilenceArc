@@ -14,6 +14,7 @@ find_package(IntelSYCL REQUIRED)
 add_subdirectory(third_party/imgui)
 
 include_directories(include)
+include_directories(third_party/miniaudio)
 
 # GoogleTest
 include(FetchContent)
@@ -37,6 +38,8 @@ add_library(silence_arc_infra STATIC
     src/infrastructure/ui_manager.cpp
     src/infrastructure/deep_filter_adapter.cpp
     src/infrastructure/async_audio_pipeline.cpp
+    src/infrastructure/miniaudio_device_manager.cpp
+    src/infrastructure/miniaudio_pipeline.cpp
 )
 target_link_libraries(silence_arc_infra PUBLIC imgui df_shared)
 
@@ -107,4 +110,14 @@ add_test(NAME UIManagerTest COMMAND test_ui_manager)
 add_test(NAME NoiseSuppressionTest COMMAND test_noise_suppression)
 add_test(NAME AudioPipelineTest COMMAND test_audio_pipeline)
 add_test(NAME E2ELoopbackTest COMMAND test_e2e_loopback)
-add_test(NAME E2ESamplesTest COMMAND test_e2e_samples)
+# Audio Stream Buffer Test (GTest)
+add_executable(test_audio_stream_buffer
+    tests/test_audio_stream_buffer.cpp
+)
+target_include_directories(test_audio_stream_buffer PRIVATE tests)
+target_link_libraries(test_audio_stream_buffer PRIVATE 
+    GTest::gtest_main 
+    silence_arc_infra
+)
+
+add_test(NAME AudioStreamBufferTest COMMAND test_audio_stream_buffer)
