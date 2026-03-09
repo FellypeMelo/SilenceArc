@@ -74,8 +74,8 @@ TEST_F(E2ESamplesTest, NoiseReductionTest) {
     float db_reduction = AudioMetrics::CalculateDbReduction(mixed, processed);
     std::cout << "Measured dB Reduction: " << db_reduction << " dB" << std::endl;
     
-    // Requirement: > 15dB reduction (since we capped the max natural attenuation at 20dB)
-    EXPECT_GT(db_reduction, 15.0f);
+    // Requirement: > 20dB reduction
+    EXPECT_GT(db_reduction, 20.0f);
 }
 
 TEST_F(E2ESamplesTest, SignalIntegrityTest) {
