@@ -15,6 +15,15 @@ struct MiniaudioPipeline::Impl {
     domain::IAudioPipeline::ProcessCallback user_callback;
     std::mutex callback_mutex;
 
+    static bool HexToDeviceId(const std::string& hex, ma_device_id& id) {
+        if (hex.length() != sizeof(ma_device_id) * 2) return false;
+        for (size_t i = 0; i < sizeof(ma_device_id); ++i) {
+            std::string byte_str = hex.substr(i * 2, 2);
+            ((unsigned char*)&id)[i] = (unsigned char)std::stoul(byte_str, nullptr, 16);
+        }
+        return true;
+    }
+
     static void DataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
         auto* impl = static_cast<Impl*>(pDevice->pUserData);
         
@@ -74,22 +83,23 @@ bool MiniaudioPipeline::Start(const std::string& input_device_id, const std::str
 
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_duplex);
     
-    if (!input_device_id.empty() && input_device_id != "-1") {
-        try {
-            int idx = std::stoi(input_device_id);
-            if (idx >= 0 && idx < (int)captureCount) {
-                deviceConfig.capture.pDeviceID = &pCaptureInfos[idx].id;
+    ma_device_id input_id, output_id;
+    if (!input_device_id.empty() && Impl::HexToDeviceId(input_device_id, input_id)) {
+        for (ma_uint32 i = 0; i < captureCount; ++i) {
+            if (memcmp(&pCaptureInfos[i].id, &input_id, sizeof(ma_device_id)) == 0) {
+                deviceConfig.capture.pDeviceID = &pCaptureInfos[i].id;
+                break;
             }
-        } catch(...) {}
+        }
     }
 
-    if (!output_device_id.empty() && output_device_id != "-1") {
-        try {
-            int idx = std::stoi(output_device_id);
-            if (idx >= 0 && idx < (int)playbackCount) {
-                deviceConfig.playback.pDeviceID = &pPlaybackInfos[idx].id;
+    if (!output_device_id.empty() && Impl::HexToDeviceId(output_device_id, output_id)) {
+        for (ma_uint32 i = 0; i < playbackCount; ++i) {
+            if (memcmp(&pPlaybackInfos[i].id, &output_id, sizeof(ma_device_id)) == 0) {
+                deviceConfig.playback.pDeviceID = &pPlaybackInfos[i].id;
+                break;
             }
-        } catch(...) {}
+        }
     }
 
     deviceConfig.capture.format   = ma_format_f32;
