@@ -1,0 +1,1005 @@
+{
+    "erb_fb": {
+        "file": "erb_fb.bin",
+        "shape": [
+            481,
+            32
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv0.1.weight": {
+        "file": "enc_erb_conv0_1_weight.bin",
+        "shape": [
+            64,
+            1,
+            3,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv0.2.weight": {
+        "file": "enc_erb_conv0_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv0.2.bias": {
+        "file": "enc_erb_conv0_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv0.2.running_mean": {
+        "file": "enc_erb_conv0_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv0.2.running_var": {
+        "file": "enc_erb_conv0_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv0.2.num_batches_tracked": {
+        "file": "enc_erb_conv0_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "enc.erb_conv1.0.weight": {
+        "file": "enc_erb_conv1_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv1.1.weight": {
+        "file": "enc_erb_conv1_1_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv1.2.weight": {
+        "file": "enc_erb_conv1_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv1.2.bias": {
+        "file": "enc_erb_conv1_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv1.2.running_mean": {
+        "file": "enc_erb_conv1_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv1.2.running_var": {
+        "file": "enc_erb_conv1_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv1.2.num_batches_tracked": {
+        "file": "enc_erb_conv1_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "enc.erb_conv2.0.weight": {
+        "file": "enc_erb_conv2_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv2.1.weight": {
+        "file": "enc_erb_conv2_1_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv2.2.weight": {
+        "file": "enc_erb_conv2_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv2.2.bias": {
+        "file": "enc_erb_conv2_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv2.2.running_mean": {
+        "file": "enc_erb_conv2_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv2.2.running_var": {
+        "file": "enc_erb_conv2_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv2.2.num_batches_tracked": {
+        "file": "enc_erb_conv2_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "enc.erb_conv3.0.weight": {
+        "file": "enc_erb_conv3_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv3.1.weight": {
+        "file": "enc_erb_conv3_1_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv3.2.weight": {
+        "file": "enc_erb_conv3_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv3.2.bias": {
+        "file": "enc_erb_conv3_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv3.2.running_mean": {
+        "file": "enc_erb_conv3_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv3.2.running_var": {
+        "file": "enc_erb_conv3_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.erb_conv3.2.num_batches_tracked": {
+        "file": "enc_erb_conv3_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "enc.df_conv0.1.weight": {
+        "file": "enc_df_conv0_1_weight.bin",
+        "shape": [
+            64,
+            1,
+            3,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv0.2.weight": {
+        "file": "enc_df_conv0_2_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv0.3.weight": {
+        "file": "enc_df_conv0_3_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv0.3.bias": {
+        "file": "enc_df_conv0_3_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv0.3.running_mean": {
+        "file": "enc_df_conv0_3_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv0.3.running_var": {
+        "file": "enc_df_conv0_3_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv0.3.num_batches_tracked": {
+        "file": "enc_df_conv0_3_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "enc.df_conv1.0.weight": {
+        "file": "enc_df_conv1_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv1.1.weight": {
+        "file": "enc_df_conv1_1_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv1.2.weight": {
+        "file": "enc_df_conv1_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv1.2.bias": {
+        "file": "enc_df_conv1_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv1.2.running_mean": {
+        "file": "enc_df_conv1_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv1.2.running_var": {
+        "file": "enc_df_conv1_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "enc.df_conv1.2.num_batches_tracked": {
+        "file": "enc_df_conv1_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "enc.df_fc_emb.0.weight": {
+        "file": "enc_df_fc_emb_0_weight.bin",
+        "shape": [
+            32,
+            96,
+            16
+        ],
+        "dtype": "float32"
+    },
+    "enc.emb_gru.linear_in.0.weight": {
+        "file": "enc_emb_gru_linear_in_0_weight.bin",
+        "shape": [
+            16,
+            32,
+            16
+        ],
+        "dtype": "float32"
+    },
+    "enc.emb_gru.gru.weight_ih_l0": {
+        "file": "enc_emb_gru_gru_weight_ih_l0.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "enc.emb_gru.gru.weight_hh_l0": {
+        "file": "enc_emb_gru_gru_weight_hh_l0.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "enc.emb_gru.gru.bias_ih_l0": {
+        "file": "enc_emb_gru_gru_bias_ih_l0.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "enc.emb_gru.gru.bias_hh_l0": {
+        "file": "enc_emb_gru_gru_bias_hh_l0.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "enc.emb_gru.linear_out.0.weight": {
+        "file": "enc_emb_gru_linear_out_0_weight.bin",
+        "shape": [
+            16,
+            16,
+            32
+        ],
+        "dtype": "float32"
+    },
+    "enc.lsnr_fc.0.weight": {
+        "file": "enc_lsnr_fc_0_weight.bin",
+        "shape": [
+            1,
+            512
+        ],
+        "dtype": "float32"
+    },
+    "enc.lsnr_fc.0.bias": {
+        "file": "enc_lsnr_fc_0_bias.bin",
+        "shape": [
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.linear_in.0.weight": {
+        "file": "erb_dec_emb_gru_linear_in_0_weight.bin",
+        "shape": [
+            16,
+            32,
+            16
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.weight_ih_l0": {
+        "file": "erb_dec_emb_gru_gru_weight_ih_l0.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.weight_hh_l0": {
+        "file": "erb_dec_emb_gru_gru_weight_hh_l0.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.bias_ih_l0": {
+        "file": "erb_dec_emb_gru_gru_bias_ih_l0.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.bias_hh_l0": {
+        "file": "erb_dec_emb_gru_gru_bias_hh_l0.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.weight_ih_l1": {
+        "file": "erb_dec_emb_gru_gru_weight_ih_l1.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.weight_hh_l1": {
+        "file": "erb_dec_emb_gru_gru_weight_hh_l1.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.bias_ih_l1": {
+        "file": "erb_dec_emb_gru_gru_bias_ih_l1.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.gru.bias_hh_l1": {
+        "file": "erb_dec_emb_gru_gru_bias_hh_l1.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.emb_gru.linear_out.0.weight": {
+        "file": "erb_dec_emb_gru_linear_out_0_weight.bin",
+        "shape": [
+            16,
+            16,
+            32
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv3p.0.weight": {
+        "file": "erb_dec_conv3p_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv3p.1.weight": {
+        "file": "erb_dec_conv3p_1_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv3p.1.bias": {
+        "file": "erb_dec_conv3p_1_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv3p.1.running_mean": {
+        "file": "erb_dec_conv3p_1_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv3p.1.running_var": {
+        "file": "erb_dec_conv3p_1_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv3p.1.num_batches_tracked": {
+        "file": "erb_dec_conv3p_1_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "erb_dec.convt3.0.weight": {
+        "file": "erb_dec_convt3_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt3.1.weight": {
+        "file": "erb_dec_convt3_1_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt3.2.weight": {
+        "file": "erb_dec_convt3_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt3.2.bias": {
+        "file": "erb_dec_convt3_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt3.2.running_mean": {
+        "file": "erb_dec_convt3_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt3.2.running_var": {
+        "file": "erb_dec_convt3_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt3.2.num_batches_tracked": {
+        "file": "erb_dec_convt3_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "erb_dec.conv2p.0.weight": {
+        "file": "erb_dec_conv2p_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv2p.1.weight": {
+        "file": "erb_dec_conv2p_1_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv2p.1.bias": {
+        "file": "erb_dec_conv2p_1_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv2p.1.running_mean": {
+        "file": "erb_dec_conv2p_1_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv2p.1.running_var": {
+        "file": "erb_dec_conv2p_1_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv2p.1.num_batches_tracked": {
+        "file": "erb_dec_conv2p_1_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "erb_dec.convt2.0.weight": {
+        "file": "erb_dec_convt2_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt2.1.weight": {
+        "file": "erb_dec_convt2_1_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt2.2.weight": {
+        "file": "erb_dec_convt2_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt2.2.bias": {
+        "file": "erb_dec_convt2_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt2.2.running_mean": {
+        "file": "erb_dec_convt2_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt2.2.running_var": {
+        "file": "erb_dec_convt2_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt2.2.num_batches_tracked": {
+        "file": "erb_dec_convt2_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "erb_dec.conv1p.0.weight": {
+        "file": "erb_dec_conv1p_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv1p.1.weight": {
+        "file": "erb_dec_conv1p_1_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv1p.1.bias": {
+        "file": "erb_dec_conv1p_1_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv1p.1.running_mean": {
+        "file": "erb_dec_conv1p_1_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv1p.1.running_var": {
+        "file": "erb_dec_conv1p_1_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv1p.1.num_batches_tracked": {
+        "file": "erb_dec_conv1p_1_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "erb_dec.convt1.0.weight": {
+        "file": "erb_dec_convt1_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt1.1.weight": {
+        "file": "erb_dec_convt1_1_weight.bin",
+        "shape": [
+            64,
+            64,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt1.2.weight": {
+        "file": "erb_dec_convt1_2_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt1.2.bias": {
+        "file": "erb_dec_convt1_2_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt1.2.running_mean": {
+        "file": "erb_dec_convt1_2_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt1.2.running_var": {
+        "file": "erb_dec_convt1_2_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.convt1.2.num_batches_tracked": {
+        "file": "erb_dec_convt1_2_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0p.0.weight": {
+        "file": "erb_dec_conv0p_0_weight.bin",
+        "shape": [
+            64,
+            1,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0p.1.weight": {
+        "file": "erb_dec_conv0p_1_weight.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0p.1.bias": {
+        "file": "erb_dec_conv0p_1_bias.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0p.1.running_mean": {
+        "file": "erb_dec_conv0p_1_running_mean.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0p.1.running_var": {
+        "file": "erb_dec_conv0p_1_running_var.bin",
+        "shape": [
+            64
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0p.1.num_batches_tracked": {
+        "file": "erb_dec_conv0p_1_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0_out.0.weight": {
+        "file": "erb_dec_conv0_out_0_weight.bin",
+        "shape": [
+            1,
+            64,
+            1,
+            3
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0_out.1.weight": {
+        "file": "erb_dec_conv0_out_1_weight.bin",
+        "shape": [
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0_out.1.bias": {
+        "file": "erb_dec_conv0_out_1_bias.bin",
+        "shape": [
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0_out.1.running_mean": {
+        "file": "erb_dec_conv0_out_1_running_mean.bin",
+        "shape": [
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0_out.1.running_var": {
+        "file": "erb_dec_conv0_out_1_running_var.bin",
+        "shape": [
+            1
+        ],
+        "dtype": "float32"
+    },
+    "erb_dec.conv0_out.1.num_batches_tracked": {
+        "file": "erb_dec_conv0_out_1_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "mask.erb_inv_fb": {
+        "file": "mask_erb_inv_fb.bin",
+        "shape": [
+            32,
+            481
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_convp.1.weight": {
+        "file": "df_dec_df_convp_1_weight.bin",
+        "shape": [
+            10,
+            32,
+            5,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_convp.2.weight": {
+        "file": "df_dec_df_convp_2_weight.bin",
+        "shape": [
+            10,
+            10,
+            1,
+            1
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_convp.3.weight": {
+        "file": "df_dec_df_convp_3_weight.bin",
+        "shape": [
+            10
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_convp.3.bias": {
+        "file": "df_dec_df_convp_3_bias.bin",
+        "shape": [
+            10
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_convp.3.running_mean": {
+        "file": "df_dec_df_convp_3_running_mean.bin",
+        "shape": [
+            10
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_convp.3.running_var": {
+        "file": "df_dec_df_convp_3_running_var.bin",
+        "shape": [
+            10
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_convp.3.num_batches_tracked": {
+        "file": "df_dec_df_convp_3_num_batches_tracked.bin",
+        "shape": [],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.linear_in.0.weight": {
+        "file": "df_dec_df_gru_linear_in_0_weight.bin",
+        "shape": [
+            8,
+            64,
+            32
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.weight_ih_l0": {
+        "file": "df_dec_df_gru_gru_weight_ih_l0.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.weight_hh_l0": {
+        "file": "df_dec_df_gru_gru_weight_hh_l0.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.bias_ih_l0": {
+        "file": "df_dec_df_gru_gru_bias_ih_l0.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.bias_hh_l0": {
+        "file": "df_dec_df_gru_gru_bias_hh_l0.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.weight_ih_l1": {
+        "file": "df_dec_df_gru_gru_weight_ih_l1.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.weight_hh_l1": {
+        "file": "df_dec_df_gru_gru_weight_hh_l1.bin",
+        "shape": [
+            768,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.bias_ih_l1": {
+        "file": "df_dec_df_gru_gru_bias_ih_l1.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_gru.gru.bias_hh_l1": {
+        "file": "df_dec_df_gru_gru_bias_hh_l1.bin",
+        "shape": [
+            768
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_skip.weight": {
+        "file": "df_dec_df_skip_weight.bin",
+        "shape": [
+            16,
+            32,
+            16
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_out.0.weight": {
+        "file": "df_dec_df_out_0_weight.bin",
+        "shape": [
+            16,
+            16,
+            60
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_fc_a.0.weight": {
+        "file": "df_dec_df_fc_a_0_weight.bin",
+        "shape": [
+            1,
+            256
+        ],
+        "dtype": "float32"
+    },
+    "df_dec.df_fc_a.0.bias": {
+        "file": "df_dec_df_fc_a_0_bias.bin",
+        "shape": [
+            1
+        ],
+        "dtype": "float32"
+    }
+}

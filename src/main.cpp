@@ -2,6 +2,7 @@
 #include "silence_arc/infrastructure/deep_filter_adapter.h"
 #include "silence_arc/infrastructure/miniaudio_pipeline.h"
 #include "silence_arc/infrastructure/miniaudio_device_manager.h"
+#include "silence_arc/infrastructure/sycl_accelerator.h"
 #include "silence_arc/domain/audio_stream_buffer.h"
 #include <iostream>
 #include <filesystem>
@@ -11,6 +12,15 @@
 
 int main() {
     std::cout << "Starting Silence Arc..." << std::endl;
+
+    // Initialize SYCL Acceleration (Arc GPU)
+    if (sycl_init()) {
+        char dev_name[256];
+        sycl_get_device_name(dev_name, 256);
+        std::cout << "[SUCCESS] Hardware Acceleration enabled on: " << dev_name << std::endl;
+    } else {
+        std::cout << "[WARN] Hardware Acceleration not available. Using CPU fallback." << std::endl;
+    }
 
     silence_arc::infrastructure::UIManager ui;
     if (!ui.Init("Silence Arc", 400, 600)) {
