@@ -8,8 +8,6 @@ This file tracks all major tracks for the project. Each track has its own detail
   *Link: [./archive/model_selection_20260308/](./archive/model_selection_20260308/)*
 - [x] **Track: Real-Time Telemetry Improvements**
   *Link: [./archive/real-time-telemetry_20260310/](./archive/real-time-telemetry_20260310/)*
-- [~] **Track: Intel Arc GPU Optimization (SYCL)**
-  *Link: [./tracks/intel-arc-gpu-sycl_20260309/](./tracks/intel-arc-gpu-sycl_20260309/)*
 
 ---
 
