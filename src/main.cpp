@@ -3,6 +3,7 @@
 #include "silence_arc/infrastructure/miniaudio_pipeline.h"
 #include "silence_arc/infrastructure/miniaudio_device_manager.h"
 #include "silence_arc/infrastructure/sycl_accelerator.h"
+#include "silence_arc/infrastructure/sycl_telemetry_provider.h"
 #include "silence_arc/domain/audio_stream_buffer.h"
 #include <iostream>
 #include <filesystem>
@@ -28,6 +29,8 @@ int main() {
         return 1;
     }
 
+    silence_arc::infrastructure::SyclTelemetryProvider telemetry_provider;
+
     silence_arc::infrastructure::DeepFilterAdapter suppressor;
     auto path = std::filesystem::current_path();
     if (path.filename() == "build") {
@@ -47,6 +50,8 @@ int main() {
 
     silence_arc::infrastructure::MiniaudioPipeline pipeline;
     pipeline.SetProcessCallback([&](const silence_arc::domain::AudioBuffer& input, silence_arc::domain::AudioBuffer& output) {
+        auto start_time = std::chrono::steady_clock::now();
+        
         in_buffer.Push(input.data.data(), input.data.size());
 
         while (in_buffer.Available() >= frame_size) {
@@ -75,6 +80,10 @@ int main() {
         
         // If we don't have enough, the rest of output.data is already 0.0 from initialization
         
+        auto end_time = std::chrono::steady_clock::now();
+        auto process_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        telemetry_provider.SetProcessingLatency(process_duration.count() / 1000.0f);
+
         // Mock signal levels for now
         ui.UpdateSignalLevels(0.5f, 0.5f, ui.GetState().noise_suppression_enabled ? 10.0f : 0.0f);
     });
@@ -108,12 +117,8 @@ int main() {
             }
         }
 
-        // Update telemetry (Mock)
-        silence_arc::domain::TelemetryData telemetry;
-        telemetry.gpu_utilization = 0.15f;
-        telemetry.processing_latency_ms = 1.5f;
-        telemetry.memory_footprint_mb = 120.0f;
-        ui.UpdateTelemetry(telemetry);
+        // Update telemetry from live provider
+        ui.UpdateTelemetry(telemetry_provider.GetLatestData());
 
         ui.Render();
         ui.EndFrame();

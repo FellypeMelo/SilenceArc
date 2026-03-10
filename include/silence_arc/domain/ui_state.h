@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include "silence_arc/domain/telemetry_provider.h"
 
 namespace silence_arc {
 namespace domain {
@@ -10,12 +11,6 @@ namespace domain {
 struct AudioDevice {
     std::string name;
     std::string id;
-};
-
-struct TelemetryData {
-    float gpu_utilization = 0.0f;
-    float processing_latency_ms = 0.0f;
-    float memory_footprint_mb = 0.0f;
 };
 
 struct UIState {
@@ -30,9 +25,7 @@ struct UIState {
     float db_reduction = 0.0f;
 
     // Telemetry
-    float gpu_utilization = 0.0f;
-    float processing_latency_ms = 0.0f;
-    float memory_footprint_mb = 0.0f;
+    TelemetryData telemetry;
 
     // Configuration
     float suppression_limit_db = 20.0f; // 0 (min) to 100 (max)

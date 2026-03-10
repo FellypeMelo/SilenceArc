@@ -1,5 +1,4 @@
 #include "silence_arc/infrastructure/ui_manager.h"
-
 #include <d3d11.h>
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -285,9 +284,9 @@ void UIManager::Render() {
 
   // 5. Telemetry (Brief for now)
   if (ImGui::CollapsingHeader("Telemetry")) {
-    ImGui::Text("GPU Util: %.1f%%", state_.gpu_utilization * 100.0f);
-    ImGui::Text("Latency: %.2f ms", state_.processing_latency_ms);
-    ImGui::Text("VRAM: %.1f MB", state_.memory_footprint_mb);
+    ImGui::Text("GPU Util: %.1f%%", state_.telemetry.gpu_utilization * 100.0f);
+    ImGui::Text("Latency: %.2f ms", state_.telemetry.processing_latency_ms);
+    ImGui::Text("VRAM: %.1f MB", state_.telemetry.memory_footprint_mb);
   }
 
   ImGui::End();
@@ -323,9 +322,7 @@ void UIManager::ShowWindow(bool show) {
 }
 
 void UIManager::UpdateTelemetry(domain::TelemetryData data) {
-    state_.gpu_utilization = data.gpu_utilization;
-    state_.processing_latency_ms = data.processing_latency_ms;
-    state_.memory_footprint_mb = data.memory_footprint_mb;
+    state_.telemetry = data;
 }
 
 void UIManager::UpdateSignalLevels(float input, float output, float reduction) {
