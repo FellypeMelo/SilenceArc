@@ -64,9 +64,9 @@ void TestTelemetryUpdate() {
     ui.UpdateTelemetry(data);
     
     auto& state = ui.GetState();
-    assert(state.gpu_utilization == 0.42f);
-    assert(state.processing_latency_ms == 5.5f);
-    assert(state.memory_footprint_mb == 256.0f);
+    assert(state.telemetry.gpu_utilization == 0.42f);
+    assert(state.telemetry.processing_latency_ms == 5.5f);
+    assert(state.telemetry.memory_footprint_mb == 256.0f);
     
     std::cout << "TestTelemetryUpdate passed." << std::endl;
 }

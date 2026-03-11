@@ -74,6 +74,7 @@ set_target_properties(df_shared PROPERTIES
 add_library(silence_arc_infra STATIC
     src/infrastructure/ui_manager.cpp
     src/infrastructure/deep_filter_adapter.cpp
+    src/infrastructure/sycl_noise_suppressor.cpp
     src/infrastructure/async_audio_pipeline.cpp
     src/infrastructure/miniaudio_device_manager.cpp
     src/infrastructure/miniaudio_pipeline.cpp
@@ -231,7 +232,30 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
 endif()
 target_link_libraries(test_nn_layers PRIVATE IntelSYCL::SYCL silence_arc_infra)
 
+# Native SYCL Inference Test
+add_executable(test_sycl_inference
+    tests/test_sycl_inference.cpp
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+    target_compile_options(test_sycl_inference PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
+    target_link_options(test_sycl_inference PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
+endif()
+target_link_libraries(test_sycl_inference PRIVATE GTest::gtest_main IntelSYCL::SYCL silence_arc_infra)
+
+# Deep Filtering Integration Test
+add_executable(test_df_integration
+    tests/test_df_integration.cpp
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+    target_compile_options(test_df_integration PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
+    target_link_options(test_df_integration PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
+endif()
+target_link_libraries(test_df_integration PRIVATE GTest::gtest_main IntelSYCL::SYCL silence_arc_infra)
+
 add_test(NAME SYCLDiscoveryTest COMMAND test_sycl_discovery)
 add_test(NAME GPUBridgeTest COMMAND test_gpu_bridge)
 add_test(NAME KernelCorrectnessTest COMMAND test_kernel_correctness)
 add_test(NAME NNLayersTest COMMAND test_nn_layers)
+add_test(NAME SyclInferenceTest COMMAND test_sycl_inference)
+add_test(NAME DfIntegrationTest COMMAND test_df_integration)
+
