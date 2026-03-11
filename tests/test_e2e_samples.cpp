@@ -135,6 +135,9 @@ TEST_F(E2ESamplesTest, GenerateProcessedSamples) {
     size_t frame_size = adapter.GetFrameLength();
 
     for (const auto& file : sample_files) {
+        // Reset the model state between files so hidden RNN memory doesn't bleed over
+        adapter.Init(model_path);
+
         WavData data;
         if (!WavLoader::Load((samples_dir / file).string(), data)) {
             std::cout << "Could not load " << file << std::endl;

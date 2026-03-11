@@ -38,10 +38,20 @@ public:
         std::vector<int16_t> raw_samples(data_size / 2);
         if (!file.read(reinterpret_cast<char*>(raw_samples.data()), data_size)) return false;
 
-        out_data.samples.resize(raw_samples.size());
-        for (size_t i = 0; i < raw_samples.size(); ++i) {
-            out_data.samples[i] = raw_samples[i] / 32768.0f;
+        // Downmix to mono if stereo or more
+        size_t frames = raw_samples.size() / out_data.num_channels;
+        out_data.samples.resize(frames);
+        
+        for (size_t i = 0; i < frames; ++i) {
+            float sum = 0.0f;
+            for (size_t ch = 0; ch < out_data.num_channels; ++ch) {
+                sum += raw_samples[i * out_data.num_channels + ch] / 32768.0f;
+            }
+            out_data.samples[i] = sum / out_data.num_channels;
         }
+        
+        // Ensure state reflects mono
+        out_data.num_channels = 1;
 
         return true;
     }
