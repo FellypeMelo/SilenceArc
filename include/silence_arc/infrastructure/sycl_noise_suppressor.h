@@ -1,17 +1,17 @@
-#ifndef SILENCE_ARC_INFRASTRUCTURE_DEEP_FILTER_ADAPTER_H_
-#define SILENCE_ARC_INFRASTRUCTURE_DEEP_FILTER_ADAPTER_H_
+#ifndef SILENCE_ARC_INFRASTRUCTURE_SYCL_NOISE_SUPPRESSOR_H_
+#define SILENCE_ARC_INFRASTRUCTURE_SYCL_NOISE_SUPPRESSOR_H_
 
 #include "silence_arc/domain/noise_suppressor.h"
-#include <string>
+#include "silence_arc/infrastructure/sycl_accelerator.h"
 #include <memory>
 
 namespace silence_arc {
 namespace infrastructure {
 
-class DeepFilterAdapter : public domain::INoiseSuppressor {
+class SyclNoiseSuppressor : public domain::INoiseSuppressor {
 public:
-    DeepFilterAdapter();
-    ~DeepFilterAdapter() override;
+    SyclNoiseSuppressor();
+    ~SyclNoiseSuppressor() override = default;
 
     bool Init(const std::string& model_path) override;
     size_t GetFrameLength() const override;
@@ -20,11 +20,9 @@ public:
     void SetDeepFilteringEnabled(bool enabled) override;
 
 private:
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
 };
 
 } // namespace infrastructure
 } // namespace silence_arc
 
-#endif // SILENCE_ARC_INFRASTRUCTURE_DEEP_FILTER_ADAPTER_H_
+#endif // SILENCE_ARC_INFRASTRUCTURE_SYCL_NOISE_SUPPRESSOR_H_

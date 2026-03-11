@@ -1,5 +1,6 @@
 #include "silence_arc/infrastructure/ui_manager.h"
 #include "silence_arc/infrastructure/deep_filter_adapter.h"
+#include "silence_arc/infrastructure/sycl_noise_suppressor.h"
 #include "silence_arc/infrastructure/miniaudio_pipeline.h"
 #include "silence_arc/infrastructure/miniaudio_device_manager.h"
 #include "silence_arc/infrastructure/sycl_accelerator.h"
@@ -14,11 +15,13 @@
 int main() {
     std::cout << "Starting Silence Arc..." << std::endl;
 
+    bool sycl_available = false;
     // Initialize SYCL Acceleration (Arc GPU)
     if (sycl_init()) {
         char dev_name[256];
         sycl_get_device_name(dev_name, 256);
         std::cout << "[SUCCESS] Hardware Acceleration enabled on: " << dev_name << std::endl;
+        sycl_available = true;
     } else {
         std::cout << "[WARN] Hardware Acceleration not available. Using CPU fallback." << std::endl;
     }
@@ -31,22 +34,31 @@ int main() {
 
     silence_arc::infrastructure::SyclTelemetryProvider telemetry_provider;
 
-    silence_arc::infrastructure::DeepFilterAdapter suppressor;
+    std::unique_ptr<silence_arc::domain::INoiseSuppressor> suppressor;
+    
+    if (sycl_available) {
+        suppressor = std::make_unique<silence_arc::infrastructure::SyclNoiseSuppressor>();
+        std::cout << "[INFO] Using Native SYCL Noise Suppressor." << std::endl;
+    } else {
+        suppressor = std::make_unique<silence_arc::infrastructure::DeepFilterAdapter>();
+        std::cout << "[INFO] Using DeepFilterNet CPU Adapter (Rust)." << std::endl;
+    }
+
     auto path = std::filesystem::current_path();
     if (path.filename() == "build") {
         path = path.parent_path();
     }
     auto model_path = path / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
     
-    if (!suppressor.Init(model_path.string())) {
-        std::cerr << "Failed to initialize DeepFilterNet model." << std::endl;
+    if (!suppressor->Init(model_path.string())) {
+        std::cerr << "Failed to initialize suppressor implementation." << std::endl;
     }
 
     silence_arc::infrastructure::MiniaudioDeviceManager::EnumerateDevices(ui.GetState());
 
     silence_arc::domain::AudioStreamBuffer in_buffer;
     silence_arc::domain::AudioStreamBuffer out_buffer;
-    size_t frame_size = suppressor.GetFrameLength();
+    size_t frame_size = suppressor->GetFrameLength();
 
     silence_arc::infrastructure::MiniaudioPipeline pipeline;
     pipeline.SetProcessCallback([&](const silence_arc::domain::AudioBuffer& input, silence_arc::domain::AudioBuffer& output) {
@@ -61,8 +73,8 @@ int main() {
 
             if (ui.GetState().noise_suppression_enabled) {
                 // Set attention limit from UI
-                suppressor.SetAttenuationLimit(ui.GetState().suppression_limit_db);
-                suppressor.ProcessFrame(frame_in.data(), frame_out.data());
+                suppressor->SetAttenuationLimit(ui.GetState().suppression_limit_db);
+                suppressor->ProcessFrame(frame_in.data(), frame_out.data());
             } else {
                 frame_out = frame_in; // Pass-through
             }

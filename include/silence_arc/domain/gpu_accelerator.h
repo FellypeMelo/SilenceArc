@@ -32,6 +32,12 @@ public:
      * @param size Number of elements.
      */
     virtual void process_frame(const float* input, float* output, size_t size) = 0;
+
+    /**
+     * @brief Toggle Deep Filtering (Complex Convolution) path.
+     * If disabled, only ERB masking is applied (more natural sound).
+     */
+    virtual void set_deep_filtering_enabled(bool enabled) = 0;
 };
 
 } // namespace sa::domain

@@ -741,22 +741,16 @@ void OneDNNInferenceEngine::setup_erb_decoder() {
     memory p3;
     add_conv2d(m_erb_decoder_layers, "erb_dec.conv3p.0.weight", e3, p3, 64, 1, 1, 0, 0, 0, 0, 1, 1);
     add_batchnorm(m_erb_decoder_layers, "erb_dec.conv3p.1", p3, p3);
-    auto p3_dims = p3.get_desc().get_dims();
-    memory::dims permuted_dims = {p3_dims[0], p3_dims[1], p3_dims[2], p3_dims[3]};
-    memory::dims permuted_strides = {p3_dims[1]*p3_dims[2]*p3_dims[3], 1, p3_dims[1]*p3_dims[3], p3_dims[1]};
-    auto src_view_md = memory::desc(permuted_dims, memory::data_type::f32, permuted_strides);
-    auto dst_nchw_md = memory::desc(permuted_dims, memory::data_type::f32, memory::format_tag::nchw);
-    memory reshaped_current = memory(dst_nchw_md, m_engine);
+    
+    // Reshape embedding to match p3 dimensions [1, 64, 1, 8]
+    memory reshaped_current;
+    add_flatten_to_nchw(m_erb_decoder_layers, "erb_dec_emb_reshape", current, reshaped_current, 64);
+    // Overwrite dimensions to [1, 64, 1, 8] since add_flatten_to_nchw defaults to [N, C, 1, 1]
+    auto p3_md = p3.get_desc();
+    reshaped_current = memory(p3_md, m_engine, current.get_data_handle());
     m_persistent_mems["erb_dec_emb_reshaped"] = reshaped_current;
-    auto reorder_pd = reorder::primitive_desc(m_engine, src_view_md, m_engine, dst_nchw_md);
-    OneDNNLayer r_layer;
-    r_layer.prim = reorder(reorder_pd);
-    auto input_view = memory(src_view_md, m_engine, current.get_data_handle());
-    m_persistent_mems["erb_dec_emb_input_view"] = input_view;
-    r_layer.args = {{DNNL_ARG_FROM, input_view}, {DNNL_ARG_TO, reshaped_current}};
-    r_layer.name = "Permute(EmbView->NCHW)";
-    m_erb_decoder_layers.push_back(r_layer);
     current = reshaped_current;
+
     add_binary_add(m_erb_decoder_layers, p3, current, current);
     add_conv2d(m_erb_decoder_layers, "erb_dec.convt3.0.weight", current, current, 64, 1, 3, 1, 1, 0, 0, 1, 1, 64);
     add_conv2d(m_erb_decoder_layers, "erb_dec.convt3.1.weight", current, current, 64, 1, 1, 0, 0, 0, 0, 1, 1);
@@ -814,9 +808,9 @@ void OneDNNInferenceEngine::setup_df_decoder() {
     // 3. Complex Pathway (c0 from encoder)
     memory c0 = safe_at(m_persistent_mems, "enc.df_block0_out");
     memory df_p;
-    // df_convp.1 is depthwise [groups=2, in=64, out=64] -> weight [2, 32, 5, 1]
-    add_conv2d(m_df_decoder_layers, "df_dec.df_convp.1.weight", c0, df_p, 64, 5, 1, 0, 0, 2, 2, 1, 1, 2);
-    // df_convp.2 is pointwise [in=64, out=10]
+    // df_convp.1 is grouped [groups=2, in=64, out=10] -> weight [10, 32, 5, 1]
+    add_conv2d(m_df_decoder_layers, "df_dec.df_convp.1.weight", c0, df_p, 10, 5, 1, 0, 0, 2, 2, 1, 1, 2);
+    // df_convp.2 is pointwise [in=10, out=10]
     add_conv2d(m_df_decoder_layers, "df_dec.df_convp.2.weight", df_p, df_p, 10, 1, 1, 0, 0, 0, 0, 1, 1);
     add_batchnorm(m_df_decoder_layers, "df_dec.df_convp.3", df_p, df_p);
     

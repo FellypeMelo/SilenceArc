@@ -15,6 +15,7 @@ public:
     virtual size_t GetFrameLength() const = 0;
     virtual float ProcessFrame(const float* input, float* output) = 0;
     virtual void SetAttenuationLimit(float limit_db) = 0;
+    virtual void SetDeepFilteringEnabled(bool enabled) = 0;
 };
 
 } // namespace domain
