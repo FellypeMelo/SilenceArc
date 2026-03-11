@@ -25,6 +25,7 @@ struct MiniaudioPipeline::Impl {
     }
 
     static void DataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+        if (!pDevice->pUserData) return;
         auto* impl = static_cast<Impl*>(pDevice->pUserData);
         
         if (!pInput || !pOutput) return;
@@ -83,23 +84,22 @@ bool MiniaudioPipeline::Start(const std::string& input_device_id, const std::str
 
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_duplex);
     
-    ma_device_id input_id, output_id;
-    if (!input_device_id.empty() && Impl::HexToDeviceId(input_device_id, input_id)) {
-        for (ma_uint32 i = 0; i < captureCount; ++i) {
-            if (memcmp(&pCaptureInfos[i].id, &input_id, sizeof(ma_device_id)) == 0) {
-                deviceConfig.capture.pDeviceID = &pCaptureInfos[i].id;
-                break;
+    if (!input_device_id.empty() && input_device_id != "-1") {
+        try {
+            int idx = std::stoi(input_device_id);
+            if (idx >= 0 && idx < (int)captureCount) {
+                deviceConfig.capture.pDeviceID = &pCaptureInfos[idx].id;
             }
-        }
+        } catch(...) {}
     }
 
-    if (!output_device_id.empty() && Impl::HexToDeviceId(output_device_id, output_id)) {
-        for (ma_uint32 i = 0; i < playbackCount; ++i) {
-            if (memcmp(&pPlaybackInfos[i].id, &output_id, sizeof(ma_device_id)) == 0) {
-                deviceConfig.playback.pDeviceID = &pPlaybackInfos[i].id;
-                break;
+    if (!output_device_id.empty() && output_device_id != "-1") {
+        try {
+            int idx = std::stoi(output_device_id);
+            if (idx >= 0 && idx < (int)playbackCount) {
+                deviceConfig.playback.pDeviceID = &pPlaybackInfos[idx].id;
             }
-        }
+        } catch(...) {}
     }
 
     deviceConfig.capture.format   = ma_format_f32;
@@ -129,6 +129,7 @@ bool MiniaudioPipeline::Start(const std::string& input_device_id, const std::str
 
 void MiniaudioPipeline::Stop() {
     if (impl_->is_initialized) {
+        impl_->device.pUserData = nullptr;
         ma_device_uninit(&impl_->device);
         impl_->is_initialized = false;
     }

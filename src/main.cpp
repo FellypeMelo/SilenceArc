@@ -109,11 +109,15 @@ int main() {
                           << state.input_devices[state.selected_input_device].name 
                           << ", Output: " << state.output_devices[state.selected_output_device].name << std::endl;
                 
-                pipeline.Start(state.input_devices[state.selected_input_device].id, 
-                               state.output_devices[state.selected_output_device].id);
-                
-                current_input_idx = state.selected_input_device;
-                current_output_idx = state.selected_output_device;
+                pipeline.Stop(); // Explicitly stop before starting new devices
+                in_buffer.Reset();
+                out_buffer.Reset();
+
+                if (pipeline.Start(std::to_string(state.selected_input_device), 
+                                   std::to_string(state.selected_output_device))) {
+                    current_input_idx = state.selected_input_device;
+                    current_output_idx = state.selected_output_device;
+                }
             }
         }
 

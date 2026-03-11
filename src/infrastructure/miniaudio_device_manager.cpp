@@ -26,15 +26,7 @@ bool MiniaudioDeviceManager::EnumerateDevices(domain::UIState& state) {
     for (ma_uint32 i = 0; i < playbackCount; i++) {
         domain::AudioDevice dev;
         dev.name = pPlaybackInfos[i].name;
-        
-        // Convert ma_device_id to a hex string for stable identification
-        char id_str[256];
-        size_t id_len = 0;
-        for (size_t j = 0; j < sizeof(ma_device_id); ++j) {
-            id_len += snprintf(id_str + id_len, sizeof(id_str) - id_len, "%02x", ((unsigned char*)&pPlaybackInfos[i].id)[j]);
-        }
-        dev.id = std::string(id_str);
-        
+        dev.id = std::to_string(i);
         state.output_devices.push_back(dev);
     }
 
@@ -42,15 +34,7 @@ bool MiniaudioDeviceManager::EnumerateDevices(domain::UIState& state) {
     for (ma_uint32 i = 0; i < captureCount; i++) {
         domain::AudioDevice dev;
         dev.name = pCaptureInfos[i].name;
-        
-        // Convert ma_device_id to a hex string for stable identification
-        char id_str[256];
-        size_t id_len = 0;
-        for (size_t j = 0; j < sizeof(ma_device_id); ++j) {
-            id_len += snprintf(id_str + id_len, sizeof(id_str) - id_len, "%02x", ((unsigned char*)&pCaptureInfos[i].id)[j]);
-        }
-        dev.id = std::string(id_str);
-        
+        dev.id = std::to_string(i);
         state.input_devices.push_back(dev);
     }
 

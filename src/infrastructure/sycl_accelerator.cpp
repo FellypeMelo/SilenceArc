@@ -145,14 +145,20 @@ void SYCLAccelerator::setup_kernels() {
     m_queue->memcpy(m_window_buffer, host_window.data(), m_fft_size * sizeof(float)).wait();
 
     // Load ERB Filterbank Weights
-    std::ifstream fb_file("models/df3_weights/erb_fb.bin", std::ios::binary);
+    std::filesystem::path path = std::filesystem::current_path();
+    if (path.filename() == "build") {
+        path = path.parent_path();
+    }
+    auto fb_path = path / "models" / "df3_weights" / "erb_fb.bin";
+
+    std::ifstream fb_file(fb_path, std::ios::binary);
     if (fb_file) {
         std::vector<float> fb_weights(m_freq_size * m_nb_erb);
         fb_file.read(reinterpret_cast<char*>(fb_weights.data()), fb_weights.size() * sizeof(float));
         m_queue->memcpy(m_erb_fb_matrix, fb_weights.data(), fb_weights.size() * sizeof(float)).wait();
-        std::cout << "[INFO] ERB Filterbank loaded." << std::endl;
+        std::cout << "[INFO] ERB Filterbank loaded from: " << fb_path.string() << std::endl;
     } else {
-        std::cerr << "[WARN] Could not load ERB filterbank (models/df3_weights/erb_fb.bin). Model might fail." << std::endl;
+        std::cerr << "[WARN] Could not load ERB filterbank (" << fb_path.string() << "). Model might fail." << std::endl;
     }
 
     // Configure oneMKL DFT

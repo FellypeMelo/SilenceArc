@@ -29,9 +29,9 @@ bool DeepFilterAdapter::Init(const std::string& model_path) {
         return false;
     }
 
-    // Default attenuation limit 20.0 for a more natural sound, instead of 100.0
+    // Default attenuation limit 40.0 for better noise removal.
     // Note: df_create might still panic if the file is not a valid model.
-    impl_->state = df_create(model_path.c_str(), 20.0f, nullptr);
+    impl_->state = df_create(model_path.c_str(), 40.0f, nullptr);
     if (!impl_->state) {
         return false;
     }

@@ -44,6 +44,11 @@ public:
         }
     }
 
+    void Reset() {
+        buffer_.clear();
+        read_index_ = 0;
+    }
+
 private:
     std::vector<float> buffer_;
     size_t read_index_ = 0;

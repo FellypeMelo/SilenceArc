@@ -225,7 +225,7 @@ void UIManager::Render() {
   if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
     ImGui::Checkbox("Noise Suppression", &state_.noise_suppression_enabled);
     if (state_.noise_suppression_enabled) {
-        ImGui::SliderFloat("Suppression Strength (dB)", &state_.suppression_limit_db, 0.0f, 100.0f, "%.1f");
+        ImGui::SliderFloat("Suppression Strength (dB)", &state_.suppression_limit_db, 0.0f, 120.0f, "%.1f");
     }
     ImGui::Checkbox("Voice Enhancement", &state_.voice_enhancement_enabled);
   }
