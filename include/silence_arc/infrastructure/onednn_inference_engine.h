@@ -19,13 +19,17 @@ struct OneDNNLayer {
     std::function<void()> custom_exec = nullptr;
 };
 
-class OneDNNInferenceEngine : public domain::NeuralNetworkModel {
+class alignas(64) OneDNNInferenceEngine : public domain::NeuralNetworkModel {
 public:
     OneDNNInferenceEngine(sycl::queue& queue, dnnl::engine& engine, dnnl::stream& stream);
     ~OneDNNInferenceEngine() override = default;
 
     bool load_weights(const std::string& weights_path) override;
     void infer_erb(const float* erb_features, float* output_mask) override;
+    void infer(const float* erb_features, const float* df_features, float* output_mask, float* df_coefs) override;
+    size_t get_df_coefs_count() const override;
+
+    void reset();
 
     // Test helpers
     void test_conv2d_mapping();
@@ -93,9 +97,18 @@ private:
                           int hidden_size, int out_size,
                           int groups, bool skip = false, int num_layers = 1);
 
+    void add_flatten_to_nchw(std::vector<OneDNNLayer>& sequence,
+                            const std::string& name,
+                            dnnl::memory input, dnnl::memory& output,
+                            int out_channels);
+
     void add_sycl_reorder_tnc_to_nchw(std::vector<OneDNNLayer>& sequence,
                                       const std::string& name,
                                       dnnl::memory input_tnc, dnnl::memory& output_nchw);
+
+    void add_sycl_reorder_nchw_to_tnc(std::vector<OneDNNLayer>& sequence,
+                                      const std::string& name,
+                                      dnnl::memory input_nchw, dnnl::memory& output_tnc);
 
     sycl::queue& m_queue;
     dnnl::engine& m_engine;
@@ -103,6 +116,7 @@ private:
 
     std::map<std::string, std::vector<float>> m_weights;
     std::map<std::string, dnnl::memory> m_persistent_mems;
+    std::map<std::string, dnnl::memory> m_gru_states; // Persistent hidden states [name -> state_mem]
     std::vector<OneDNNLayer> m_encoder_layers;
     std::vector<OneDNNLayer> m_erb_decoder_layers;
     std::vector<OneDNNLayer> m_df_decoder_layers;
