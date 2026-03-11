@@ -13,3 +13,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [x] **Track: Create a Deep Documentation of all the Aplication Explaning eveything Every Good Things and the ideia of a first Noise Supression Real Time for Intel Only.**
   *Link: [./tracks/deep-docs_20260309/](./tracks/deep-docs_20260309/)*
+
+---
+
+- [ ] **Track: Lets Implement the DfIntegration**
+*Link: [./tracks/df-integration_20260311/](./tracks/df-integration_20260311/)*
