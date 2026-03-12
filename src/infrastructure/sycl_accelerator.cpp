@@ -1,5 +1,7 @@
 #include "silence_arc/infrastructure/sycl_accelerator.h"
+#include "silence_arc/domain/neural_engine.h"
 #include "silence_arc/infrastructure/onednn_inference_engine.h"
+#include "silence_arc/infrastructure/sycl_dsp_coordinator.h"
 #include <dnnl_sycl.hpp>
 #include <iostream>
 #include <fstream>
@@ -16,15 +18,21 @@ static std::mutex g_accel_mutex;
 SYCLAccelerator::SYCLAccelerator() 
     : m_device_name("Not Initialized")
 {
-    // Initialize tracking states with reference defaults
     m_erb_mean.resize(32);
+    m_erb_var.resize(96);
+    reset_stats();
+}
+
+SYCLAccelerator::~SYCLAccelerator() {
+    cleanup();
+}
+
+void SYCLAccelerator::reset_stats() {
     float start = -60.0f;
     float end = -90.0f;
     for (int i = 0; i < 32; ++i) {
         m_erb_mean[i] = start + i * (end - start) / 31.0f;
     }
-    
-    m_erb_var.resize(96);
     start = 0.001f;
     end = 0.0001f;
     for (int i = 0; i < 96; ++i) {
@@ -32,87 +40,65 @@ SYCLAccelerator::SYCLAccelerator()
     }
 }
 
-SYCLAccelerator::~SYCLAccelerator() {
-    cleanup();
-}
-
 void SYCLAccelerator::cleanup() {
-    if (m_queue) {
-        auto q = *m_queue;
-        if (m_window_buffer) sycl::free(m_window_buffer, q);
-        if (m_analysis_mem) sycl::free(m_analysis_mem, q);
-        if (m_synthesis_mem) sycl::free(m_synthesis_mem, q);
-        if (m_freq_buffer) sycl::free(m_freq_buffer, q);
-        if (m_freq_history) sycl::free(m_freq_history, q);
-        if (m_reconstructed_frame) sycl::free(m_reconstructed_frame, q);
-        if (m_fft_input_scratch) sycl::free(m_fft_input_scratch, q);
-        if (m_filtered_freq_scratch) sycl::free(m_filtered_freq_scratch, q);
-        if (m_power_spectrum) sycl::free(m_power_spectrum, q);
-        if (m_erb_buffer) sycl::free(m_erb_buffer, q);
-        if (m_erb_fb_matrix) sycl::free(m_erb_fb_matrix, q);
-        if (m_erb_inv_fb_matrix) sycl::free(m_erb_inv_fb_matrix, q);
-        if (m_erb_norm_state) sycl::free(m_erb_norm_state, q);
-        if (m_spec_norm_state) sycl::free(m_spec_norm_state, q);
-        if (m_df_coefs) sycl::free(m_df_coefs, q);
-
-        m_window_buffer = nullptr;
-        m_analysis_mem = nullptr;
-        m_synthesis_mem = nullptr;
-        m_freq_buffer = nullptr;
-        m_freq_history = nullptr;
-        m_reconstructed_frame = nullptr;
-        m_fft_input_scratch = nullptr;
-        m_filtered_freq_scratch = nullptr;
-        m_power_spectrum = nullptr;
-        m_erb_buffer = nullptr;
-        m_erb_fb_matrix = nullptr;
-        m_erb_inv_fb_matrix = nullptr;
-        m_erb_norm_state = nullptr;
-        m_spec_norm_state = nullptr;
-        m_df_coefs = nullptr;
-    }
-    m_fft_config.reset();
-    m_ifft_config.reset();
+    m_dsp.reset();
+    m_engine.reset();
+    m_dnnl_stream.reset();
+    m_dnnl_engine.reset();
 }
 
 bool SYCLAccelerator::initialize() {
-    try {
-        sycl::device device;
-        bool found = false;
+    if (m_dsp && m_engine) return true; // Already initialized
 
-        auto platforms = sycl::platform::get_platforms();
-        for (auto& platform : platforms) {
-            auto devices = platform.get_devices();
-            for (auto& dev : devices) {
-                std::string name = dev.get_info<sycl::info::device::name>();
-                if (dev.is_gpu() && name.find("Arc") != std::string::npos) {
-                    device = dev;
-                    found = true;
-                    break;
+    try {
+        if (!m_queue) {
+            sycl::device device;
+            bool found = false;
+            auto platforms = sycl::platform::get_platforms();
+            for (auto& platform : platforms) {
+                auto devices = platform.get_devices();
+                for (auto& dev : devices) {
+                    std::string name = dev.get_info<sycl::info::device::name>();
+                    if (dev.is_gpu() && name.find("Arc") != std::string::npos) {
+                        device = dev;
+                        found = true;
+                        break;
+                    }
                 }
+                if (found) break;
             }
-            if (found) break;
+            if (!found) device = sycl::device(sycl::default_selector_v);
+
+            m_queue = sycl::queue(device, sycl::property::queue::in_order());
+            m_device_name = device.get_info<sycl::info::device::name>();
+            std::cout << "[INFO] SYCL Initialized on: " << m_device_name << std::endl;
         }
 
-        if (!found) device = sycl::device(sycl::default_selector_v);
+        if (!m_dnnl_engine) {
+            m_dnnl_engine = std::make_unique<dnnl::engine>(dnnl::sycl_interop::make_engine(m_queue->get_device(), m_queue->get_context()));
+            m_dnnl_stream = std::make_unique<dnnl::stream>(dnnl::sycl_interop::make_stream(*m_dnnl_engine, *m_queue));
+        }
 
-        m_queue = sycl::queue(device, sycl::property::queue::in_order());
-        m_device_name = device.get_info<sycl::info::device::name>();
+        /* 
+         * [REVERTED] Native Inference Engine disabled to restore stability via Rust Adapter.
+         * Telemetry remains functional via Level Zero discovery above.
+         *
+        if (!m_engine) {
+            m_engine = std::make_unique<OneDNNInferenceEngine>(*m_queue, *m_dnnl_engine, *m_dnnl_stream);
+            std::filesystem::path weights_path = std::filesystem::current_path();
+            if (weights_path.filename() == "build") weights_path = weights_path.parent_path();
+            weights_path = weights_path / "models" / "df3_weights";
 
-        std::cout << "[INFO] SYCL Initialized on: " << m_device_name << std::endl;
+            if (!m_engine->load_weights(weights_path.string())) return false;
+        }
+        
+        if (!m_dsp) {
+            m_dsp = std::make_unique<SYCLDSPCoordinator>(*m_queue, m_fft_size, m_hop_size);
+            m_dsp->initialize();
+            setup_kernels();
+        }
+        */
 
-        m_dnnl_engine = std::make_unique<dnnl::engine>(dnnl::sycl_interop::make_engine(m_queue->get_device(), m_queue->get_context()));
-        m_dnnl_stream = std::make_unique<dnnl::stream>(dnnl::sycl_interop::make_stream(*m_dnnl_engine, *m_queue));
-        m_engine = std::make_unique<OneDNNInferenceEngine>(*m_queue, *m_dnnl_engine, *m_dnnl_stream);
-
-        std::filesystem::path weights_path = std::filesystem::current_path();
-        if (weights_path.filename() == "build") weights_path = weights_path.parent_path();
-        weights_path = weights_path / "models" / "df3_weights";
-
-        if (!m_engine->load_weights(weights_path.string())) return false;
-        std::cout << "[SUCCESS] Neural Engine ready." << std::endl;
-
-        setup_kernels();
         return true;
     } catch (const std::exception& e) {
         std::cerr << "[FATAL] SYCL Initialization failed: " << e.what() << std::endl;
@@ -121,69 +107,26 @@ bool SYCLAccelerator::initialize() {
 }
 
 void SYCLAccelerator::setup_kernels() {
-    if (!m_queue) return;
-
-    try {
-        m_fft_config = std::make_unique<oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>>(static_cast<std::int64_t>(m_fft_size));
-        m_fft_config->set_value(oneapi::mkl::dft::config_param::PLACEMENT, oneapi::mkl::dft::config_value::NOT_INPLACE);
-        m_fft_config->commit(*m_queue);
-
-        m_ifft_config = std::make_unique<oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>>(static_cast<std::int64_t>(m_fft_size));
-        m_ifft_config->set_value(oneapi::mkl::dft::config_param::PLACEMENT, oneapi::mkl::dft::config_value::NOT_INPLACE);
-        m_ifft_config->commit(*m_queue);
-    } catch (const std::exception& e) {
-        std::cerr << "[FATAL] FFT configuration failed: " << e.what() << std::endl;
-        return;
-    }
-
+    if (!m_queue || !m_dsp) return;
     auto q = *m_queue;
-    m_window_buffer = sycl::malloc_device<float>(m_fft_size, q);
-    m_analysis_mem = sycl::malloc_device<float>(m_fft_size, q);
-    m_synthesis_mem = sycl::malloc_device<float>(m_fft_size - m_hop_size, q);
-    m_freq_buffer = sycl::malloc_device<std::complex<float>>(m_freq_size, q);
-    m_freq_history = sycl::malloc_device<std::complex<float>>(m_df_order * m_freq_size, q);
-    m_reconstructed_frame = sycl::malloc_device<float>(m_fft_size, q);
-    m_fft_input_scratch = sycl::malloc_device<float>(m_fft_size, q);
-    m_filtered_freq_scratch = sycl::malloc_device<std::complex<float>>(m_freq_size, q);
-    m_power_spectrum = sycl::malloc_device<float>(m_freq_size, q);
-    m_erb_buffer = sycl::malloc_device<float>(m_nb_erb, q);
-    m_erb_fb_matrix = sycl::malloc_device<float>(m_freq_size * m_nb_erb, q);
-    m_erb_inv_fb_matrix = sycl::malloc_device<float>(m_nb_erb * m_freq_size, q);
-    m_erb_norm_state = sycl::malloc_device<float>(m_nb_erb, q);
-    m_spec_norm_state = sycl::malloc_device<float>(m_nb_df, q);
-    m_df_coefs = sycl::malloc_device<float>(m_nb_df * m_df_order * 2, q);
-
-    q.fill(m_analysis_mem, 0.0f, m_fft_size);
-    q.fill(m_synthesis_mem, 0.0f, m_fft_size - m_hop_size);
-    q.fill(reinterpret_cast<float*>(m_freq_history), 0.0f, m_df_order * m_freq_size * 2);
-    q.fill(m_erb_norm_state, 0.0f, m_nb_erb);
-    q.fill(m_spec_norm_state, 0.0f, m_nb_df);
-    q.fill(m_df_coefs, 0.0f, m_nb_df * m_df_order * 2);
-    q.wait();
-
-    const double pi = 3.14159265358979323846;
-    std::vector<float> host_window(m_fft_size);
-    for (size_t i = 0; i < m_fft_size; ++i) {
-        double sin_val = std::sin(0.5 * pi * (static_cast<double>(i) + 0.5) / (m_fft_size / 2.0));
-        host_window[i] = static_cast<float>(std::sin(0.5 * pi * sin_val * sin_val));
-    }
-    q.memcpy(m_window_buffer, host_window.data(), m_fft_size * sizeof(float)).wait();
 
     std::filesystem::path path = std::filesystem::current_path();
     if (path.filename() == "build") path = path.parent_path();
+    
     auto fb_path = path / "models" / "df3_weights" / "erb_fb.bin";
     std::ifstream fb_file(fb_path, std::ios::binary);
     if (fb_file) {
         std::vector<float> fb_weights(m_freq_size * m_nb_erb);
         fb_file.read(reinterpret_cast<char*>(fb_weights.data()), fb_weights.size() * sizeof(float));
-        q.memcpy(m_erb_fb_matrix, fb_weights.data(), fb_weights.size() * sizeof(float)).wait();
+        q.memcpy(m_dsp->get_erb_fb_matrix(), fb_weights.data(), fb_weights.size() * sizeof(float)).wait();
     }
+    
     auto inv_fb_path = path / "models" / "df3_weights" / "mask_erb_inv_fb.bin";
     std::ifstream inv_fb_file(inv_fb_path, std::ios::binary);
     if (inv_fb_file) {
         std::vector<float> inv_fb_weights(m_nb_erb * m_freq_size);
         inv_fb_file.read(reinterpret_cast<char*>(inv_fb_weights.data()), inv_fb_weights.size() * sizeof(float));
-        q.memcpy(m_erb_inv_fb_matrix, inv_fb_weights.data(), inv_fb_weights.size() * sizeof(float)).wait();
+        q.memcpy(m_dsp->get_erb_inv_fb_matrix(), inv_fb_weights.data(), inv_fb_weights.size() * sizeof(float)).wait();
         std::cout << "[INFO] Inverse Filterbank loaded." << std::endl;
     }
 }
@@ -193,111 +136,44 @@ std::string SYCLAccelerator::get_device_name() const {
 }
 
 void SYCLAccelerator::reset() {
-    if (m_engine) {
-        m_engine->reset();
-    }
-    
-    // Reset ERB tracking means to reference defaults
-    float start = -60.0f;
-    float end = -90.0f;
-    for (int i = 0; i < 32; ++i) {
-        m_erb_mean[i] = start + i * (end - start) / 31.0f;
-    }
-    
-    // Reset unit norm states
-    start = 0.001f;
-    end = 0.0001f;
-    for (int i = 0; i < 96; ++i) {
-        m_erb_var[i] = start + i * (end - start) / 95.0f;
-    }
-
-    if (m_queue) {
-        m_queue->fill(reinterpret_cast<float*>(m_freq_history), 0.0f, m_df_order * m_freq_size * 2).wait();
-        m_queue->fill(m_analysis_mem, 0.0f, m_fft_size).wait();
-        m_queue->fill(m_synthesis_mem, 0.0f, m_fft_size - m_hop_size).wait();
+    if (m_engine) m_engine->reset();
+    reset_stats();
+    if (m_queue && m_dsp) {
+        m_queue->fill(reinterpret_cast<float*>(m_dsp->get_freq_history()), 0.0f, m_df_order * m_freq_size * 2).wait();
+        m_queue->fill(m_dsp->get_analysis_mem(), 0.0f, m_fft_size).wait();
+        m_queue->fill(m_dsp->get_synthesis_mem(), 0.0f, m_fft_size - m_hop_size).wait();
     }
 }
 
 void SYCLAccelerator::process_frame(const float* input, float* output, size_t size) {
-    if (!m_queue || size != m_hop_size) return;
+    if (!m_queue || !m_dsp || size != m_hop_size) return;
 
-    static int frame_count_global = 0;
     try {
         auto q = *m_queue;
-        float* window = m_window_buffer;
-        float* analysis = m_analysis_mem;
-        float* synthesis = m_synthesis_mem;
-        std::complex<float>* freq = m_freq_buffer;
-        std::complex<float>* history = m_freq_history;
-        float* reconstructed = m_reconstructed_frame;
-        float* device_out = m_fft_input_scratch;
-        std::complex<float>* filtered_freq = m_filtered_freq_scratch;
-
-        // Local constants to avoid illegal 'this' capture
-        const size_t fft_size_val = m_fft_size;
-        const size_t hop_size_val = m_hop_size;
-        const size_t freq_size_val = m_freq_size;
-        const size_t overlap_size_val = m_fft_size - m_hop_size;
-        const size_t df_order_val = m_df_order;
-        const size_t nb_erb_val = m_nb_erb;
-        const size_t nb_df_val = m_nb_df;
-        const bool df_enabled_val = m_df_enabled;
-        const int frame_count = frame_count_global;
-
+        
         // 1. Analysis
-        q.memcpy(analysis + overlap_size_val, input, hop_size_val * sizeof(float)).wait();
-        float* fft_in = reconstructed;
-        q.submit([&](sycl::handler& h) {
-            h.parallel_for(sycl::range<1>(fft_size_val), [=](sycl::id<1> idx) {
-                fft_in[idx] = analysis[idx] * window[idx];
-            });
-        }).wait();
-        oneapi::mkl::dft::compute_forward(*m_fft_config, fft_in, freq).wait();
-
-        const float wnorm = 1.0f / (static_cast<float>(fft_size_val * fft_size_val) / (2.0f * hop_size_val));
-        q.submit([&](sycl::handler& h) {
-            h.parallel_for(sycl::range<1>(freq_size_val), [=](sycl::id<1> idx) {
-                freq[idx] *= wnorm;
-            });
-        }).wait();
+        m_dsp->analyze(input, m_dsp->get_window_buffer(), m_dsp->get_analysis_mem(), m_dsp->get_freq_buffer());
 
         // 2. Feature Extraction
-        float* ps_ptr = m_power_spectrum;
-        q.submit([&](sycl::handler& h) {
-            h.parallel_for(sycl::range<1>(freq_size_val), [=](sycl::id<1> idx) {
-                float re = freq[idx].real();
-                float im = freq[idx].imag();
-                ps_ptr[idx] = re * re + im * im;
-            });
-        }).wait();
+        m_dsp->extract_power_spectrum(m_dsp->get_freq_buffer(), m_dsp->get_power_spectrum());
+        m_dsp->apply_erb_filterbank(m_dsp->get_power_spectrum(), m_dsp->get_erb_fb_matrix(), m_dsp->get_erb_buffer());
 
-        float* fb_ptr = m_erb_fb_matrix;
-        float* erb_ptr = m_erb_buffer;
-        q.submit([&](sycl::handler& h) {
-            h.parallel_for(sycl::range<1>(nb_erb_val), [=](sycl::id<1> erb_idx) {
-                float sum = 0.0f;
-                for (size_t f = 0; f < freq_size_val; ++f) {
-                    sum += ps_ptr[f] * fb_ptr[f * nb_erb_val + erb_idx];
-                }
-                erb_ptr[erb_idx] = sum;
-            });
-        }).wait();
-
-        // 3. Normalization (Reference: 10 * log10 and band_mean_norm_erb)
-        std::vector<float> host_erb(nb_erb_val);
-        q.memcpy(host_erb.data(), m_erb_buffer, nb_erb_val * sizeof(float)).wait();
-        const float alpha = 0.1f;
-        for (size_t i = 0; i < nb_erb_val; ++i) {
+        // 3. Normalization (ERB log-scale)
+        std::vector<float> host_erb(m_nb_erb);
+        q.memcpy(host_erb.data(), m_dsp->get_erb_buffer(), m_nb_erb * sizeof(float)).wait();
+        
+        const float alpha = 0.9f; 
+        for (size_t i = 0; i < m_nb_erb; ++i) {
             float lp = std::log10(host_erb[i] + 1e-10f) * 10.0f;
             m_erb_mean[i] = lp * (1.0f - alpha) + m_erb_mean[i] * alpha;
             host_erb[i] = (lp - m_erb_mean[i]) / 20.0f;
         }
 
         // 4. Complex Unit Normalization for DF path
-        std::vector<std::complex<float>> host_freq_in(nb_df_val);
-        std::vector<float> host_df_features(nb_df_val * 2);
-        q.memcpy(host_freq_in.data(), freq, nb_df_val * sizeof(std::complex<float>)).wait();
-        for (size_t i = 0; i < nb_df_val; ++i) {
+        std::vector<std::complex<float>> host_freq_in(m_nb_df);
+        std::vector<float> host_df_features(m_nb_df * 2);
+        q.memcpy(host_freq_in.data(), m_dsp->get_freq_buffer(), m_nb_df * sizeof(std::complex<float>)).wait();
+        for (size_t i = 0; i < m_nb_df; ++i) {
             float n = std::sqrt(host_freq_in[i].real()*host_freq_in[i].real() + host_freq_in[i].imag()*host_freq_in[i].imag());
             m_erb_var[i] = n * (1.0f - alpha) + m_erb_var[i] * alpha;
             float s = std::sqrt(m_erb_var[i] + 1e-10f);
@@ -306,95 +182,77 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
         }
 
         // 5. Inference
-        std::vector<float> host_mask(nb_erb_val);
-        std::vector<float> host_df_coefs(nb_df_val * df_order_val * 2);
+        std::vector<float> host_mask(m_nb_erb);
+        std::vector<float> host_df_coefs(m_nb_df * m_df_order * 2);
         if (m_engine) {
             m_engine->infer(host_erb.data(), host_df_features.data(), host_mask.data(), host_df_coefs.data());
+            
+            static int debug_count = 0;
+            if (debug_count++ % 100 == 0) {
+                float mask_sum = 0;
+                for(float m : host_mask) mask_sum += m;
+                float coef_sum = 0;
+                for(float c : host_df_coefs) coef_sum += std::abs(c);
+                std::cout << "[DEBUG] Frame " << debug_count << " Mask Sum: " << mask_sum << " Coef Sum: " << coef_sum << std::endl;
+            }
         } else {
             std::fill(host_mask.begin(), host_mask.end(), 1.0f);
             std::fill(host_df_coefs.begin(), host_df_coefs.end(), 0.0f);
         }
 
-        // 6. Apply Filtering & Synthesis
-        q.memcpy(m_df_coefs, host_df_coefs.data(), host_df_coefs.size() * sizeof(float));
-        q.memcpy(m_erb_buffer, host_mask.data(), nb_erb_val * sizeof(float)).wait();
+        // 6. Shift and update history with RAW signal
+        std::complex<float>* h_ptr = m_dsp->get_freq_history();
+        auto freq_buf = m_dsp->get_freq_buffer();
+        const size_t freq_size = m_freq_size;
+        const size_t df_order = m_df_order;
 
         q.submit([&](sycl::handler& h) {
-            float* m_ptr = m_erb_buffer;
-            float* inv_fb_ptr = m_erb_inv_fb_matrix;
-            float* c_ptr = m_df_coefs;
-            std::complex<float>* h_ptr = history;
-            h.parallel_for(sycl::range<1>(freq_size_val), [=](sycl::id<1> f_idx) {
-                // 1. Update History FIRST (Shift and insert current frame)
-                for (int i = static_cast<int>(df_order_val) - 1; i > 0; --i) {
-                    h_ptr[i * freq_size_val + f_idx] = h_ptr[(i - 1) * freq_size_val + f_idx];
+            h.parallel_for(sycl::range<1>(freq_size), [=](sycl::id<1> f_idx) {
+                for (int i = static_cast<int>(df_order) - 1; i > 0; --i) {
+                    h_ptr[i * freq_size + f_idx] = h_ptr[(i - 1) * freq_size + f_idx];
                 }
-                h_ptr[f_idx] = freq[f_idx];
+                h_ptr[f_idx] = freq_buf[f_idx]; 
+            });
+        }).wait();
 
-                // 2. ERB Mask logic
-                // The model output at frame 't' is for frame 't - lookahead'
-                // Lookahead for DF3 is 2.
-                const int lookahead = 2;
-                float m = 0.0f;
-                for (size_t e = 0; e < nb_erb_val; ++e) {
-                    m += m_ptr[e] * inv_fb_ptr[e * freq_size_val + f_idx];
-                }
-                
-                // Base frame for output is history[lookahead] (t-2)
-                std::complex<float> target_frame = h_ptr[lookahead * freq_size_val + f_idx];
-                std::complex<float> masked_frame = target_frame * std::clamp(m, 0.0f, 1.0f);
+        // 7. Apply Filtering
+        q.memcpy(m_dsp->get_df_coefs(), host_df_coefs.data(), host_df_coefs.size() * sizeof(float));
+        q.memcpy(m_dsp->get_erb_buffer(), host_mask.data(), m_nb_erb * sizeof(float)).wait();
 
-                // 3. Deep Filter logic
-                if (df_enabled_val && f_idx < nb_df_val) {
-                    std::complex<float> df(0.0f, 0.0f);
-                    for (size_t i = 0; i < df_order_val; ++i) {
-                        std::complex<float> tap_coef(c_ptr[(f_idx * df_order_val + i) * 2 + 0], 
-                                                   c_ptr[(f_idx * df_order_val + i) * 2 + 1]);
-                        
-                        // DF3 Order 5, Lookahead 2.
-                        // Coefs i=0..4 are for window [t-2, t-1, t, t+1, t+2]
-                        // We are at physical time T. 
-                        // history[0]=T, history[1]=T-1, history[2]=T-2, history[3]=T-3, history[4]=T-4
-                        // For target t = T-2:
-                        // t-2 = T-4 (history[4])
-                        // t-1 = T-3 (history[3])
-                        // t   = T-2 (history[2])
-                        // t+1 = T-1 (history[1])
-                        // t+2 = T   (history[0])
-                        
-                        // Map i=0..4 to history[4..0]
-                        std::complex<float> hist_frame = h_ptr[(df_order_val - 1 - i) * freq_size_val + f_idx];
-                        df += tap_coef * hist_frame;
+        if (m_df_enabled) {
+            m_dsp->apply_df_coefficients(m_dsp->get_freq_history(), m_dsp->get_df_coefs(), m_dsp->get_filtered_freq_scratch());
+            q.wait(); // Synchronize before next step using the scratch buffer
+
+            // Copy high frequency bins from ERB path (target frame t-2)
+            const size_t nb_df = m_nb_df;
+            const size_t nb_erb = m_nb_erb;
+            q.submit([&](sycl::handler& h) {
+                auto filtered = m_dsp->get_filtered_freq_scratch();
+                auto history = m_dsp->get_freq_history();
+                auto mask_ptr = m_dsp->get_erb_buffer();
+                auto inv_fb = m_dsp->get_erb_inv_fb_matrix();
+                h.parallel_for(sycl::range<1>(freq_size - nb_df), [=](sycl::id<1> idx) {
+                    size_t f_idx = idx[0] + nb_df;
+                    float m = 0.0f;
+                    for (size_t e = 0; e < nb_erb; ++e) {
+                        m += mask_ptr[e] * inv_fb[e * freq_size + f_idx];
                     }
-                    filtered_freq[f_idx] = df;
-                } else {
-                    // For bins > 96, use the masked result from ERB pathway
-                    filtered_freq[f_idx] = masked_frame;
-                }
-            });
-        }).wait();
+                    // Lookahead 2: history[2] is frame t-2
+                    filtered[f_idx] = history[2 * freq_size + f_idx] * std::clamp(m, 0.0f, 1.0f);
+                });
+            }).wait();
+        } else {
+            m_dsp->apply_erb_mask(m_dsp->get_freq_buffer(), m_dsp->get_erb_buffer(), m_dsp->get_erb_inv_fb_matrix(), m_dsp->get_filtered_freq_scratch());
+            q.wait();
+        }
+        // 8. Synthesis
+        m_dsp->synthesize(m_dsp->get_filtered_freq_scratch(), m_dsp->get_window_buffer(), m_dsp->get_reconstructed_frame(), m_dsp->get_synthesis_mem(), output);
 
-        frame_count_global++;
+        // 9. Shift analysis buffer
+        m_dsp->shift_analysis_buffer(m_dsp->get_analysis_mem());
 
-        oneapi::mkl::dft::compute_backward(*m_ifft_config, filtered_freq, reconstructed).wait();
-
-        q.submit([&](sycl::handler& h) {
-            h.parallel_for(sycl::range<1>(hop_size_val), [=](sycl::id<1> idx) {
-                device_out[idx] = (reconstructed[idx] * window[idx]) + synthesis[idx];
-                synthesis[idx] = reconstructed[idx + hop_size_val] * window[idx + hop_size_val];
-            });
-        }).wait();
-
-        q.memcpy(output, device_out, hop_size_val * sizeof(float)).wait();
-        q.submit([&](sycl::handler& h) {
-            h.parallel_for(sycl::range<1>(overlap_size_val), [=](sycl::id<1> idx) {
-                analysis[idx] = analysis[idx + hop_size_val];
-            });
-        }).wait();
-    } catch (const sycl::exception& e) {
-        std::cerr << "[ERROR] SYCL Runtime Exception: " << e.what() << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "[ERROR] Exception during process_frame: " << e.what() << std::endl;
+        std::cerr << "[ERROR] Exception during SYCLAccelerator::process_frame: " << e.what() << std::endl;
     }
 }
 
@@ -405,8 +263,12 @@ bool sycl_init() {
     std::lock_guard<std::mutex> lock(sa::infrastructure::g_accel_mutex);
     if (!sa::infrastructure::g_accelerator) {
         sa::infrastructure::g_accelerator = std::make_unique<sa::infrastructure::SYCLAccelerator>();
+        if (!sa::infrastructure::g_accelerator->initialize()) {
+            sa::infrastructure::g_accelerator.reset();
+            return false;
+        }
     }
-    return sa::infrastructure::g_accelerator->initialize();
+    return true;
 }
 void sycl_process(const float* input, float* output, size_t size) {
     std::lock_guard<std::mutex> lock(sa::infrastructure::g_accel_mutex);

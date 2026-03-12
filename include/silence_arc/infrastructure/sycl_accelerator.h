@@ -1,6 +1,6 @@
 #pragma once
 
-#include "silence_arc/domain/gpu_accelerator.h"
+#include "silence_arc/domain/audio_processor.h"
 #include <sycl/sycl.hpp>
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/dft.hpp>
@@ -8,16 +8,21 @@
 #include <optional>
 #include <vector>
 #include <complex>
+#include <memory>
+
+namespace sa::domain {
+    class INeuralEngine;
+}
 
 namespace sa::infrastructure {
 
-class OneDNNInferenceEngine;
+class SYCLDSPCoordinator;
 
 /**
- * @brief SYCL implementation of GPUAccelerator optimized for Intel Arc (oneAPI).
+ * @brief SYCL implementation of IAudioProcessor optimized for Intel Arc (oneAPI).
  * Uses Unified Shared Memory (USM) for zero-copy performance.
  */
-class alignas(64) SYCLAccelerator : public domain::GPUAccelerator {
+class alignas(64) SYCLAccelerator : public domain::IAudioProcessor {
 public:
     SYCLAccelerator();
     ~SYCLAccelerator() override;
@@ -28,7 +33,7 @@ public:
     void set_deep_filtering_enabled(bool enabled) override { m_df_enabled = enabled; }
     void reset();
 
-    // Getters for internal SYCL/oneDNN objects (needed by inference engine)
+    // Internal SYCL/oneDNN objects (decoupled from domain)
     sycl::queue& get_queue() { return *m_queue; }
     dnnl::engine& get_dnnl_engine() { return *m_dnnl_engine; }
     dnnl::stream& get_dnnl_stream() { return *m_dnnl_stream; }
@@ -37,38 +42,15 @@ private:
     std::optional<sycl::queue> m_queue;
     std::string m_device_name;
 
-    // oneDNN Engine and Stream (Declared before m_engine so they are destroyed after)
+    // oneDNN Engine and Stream
     std::unique_ptr<dnnl::engine> m_dnnl_engine;
     std::unique_ptr<dnnl::stream> m_dnnl_stream;
 
-    std::unique_ptr<OneDNNInferenceEngine> m_engine;
-
-    // USM Buffers for intermediate processing
-    float* m_window_buffer = nullptr;
-    float* m_analysis_mem = nullptr;
-    float* m_synthesis_mem = nullptr;
-    std::complex<float>* m_freq_buffer = nullptr;
-    std::complex<float>* m_freq_history = nullptr; // [df_order * freq_size]
-    float* m_reconstructed_frame = nullptr;
-    
-    // Feature Extraction Buffers
-    float* m_power_spectrum = nullptr;    // [freq_size]
-    float* m_erb_buffer = nullptr;        // [nb_erb]
-    float* m_erb_fb_matrix = nullptr;     // [freq_size * nb_erb]
-    float* m_erb_inv_fb_matrix = nullptr; // [nb_erb * freq_size]
-    float* m_erb_norm_state = nullptr;    // [nb_erb]
-    float* m_spec_norm_state = nullptr;   // [nb_df]
-    float* m_df_coefs = nullptr;          // [nb_df * df_order * 2] (complex)
-
-    // Scratch buffers (reused to avoid allocation in hot path)
-    float* m_fft_input_scratch = nullptr;
-    std::complex<float>* m_filtered_freq_scratch = nullptr;
-
-    // oneMKL DFT descriptors
-    std::unique_ptr<oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>> m_fft_config;
-    std::unique_ptr<oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>> m_ifft_config;
+    std::unique_ptr<domain::INeuralEngine> m_engine;
+    std::unique_ptr<SYCLDSPCoordinator> m_dsp;
 
     // Constants for DeepFilterNet
+
     const size_t m_fft_size = 960;
     const size_t m_hop_size = 480;
     const size_t m_freq_size = m_fft_size / 2 + 1;
@@ -82,6 +64,7 @@ private:
     std::vector<float> m_erb_mean;
     std::vector<float> m_erb_var;
 
+    void reset_stats();
     void setup_kernels();
     void cleanup();
 };

@@ -16,5 +16,10 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track: Limpeza de Código e Modularização Do Projeto - Clean Code, Kiss e YAGNI**
+- [~] **Track: Limpeza de Código e Modularização Do Projeto - Clean Code, Kiss e YAGNI**
   *Link: [./tracks/cleanup-modularization_20260311/](./tracks/cleanup-modularization_20260311/)*
+
+---
+
+- [x] **Track: Revert DeepFiltering to Rust Adapter**
+  *Reverted native SYCL implementation due to audio artifacts and restored stable Rust integration.*

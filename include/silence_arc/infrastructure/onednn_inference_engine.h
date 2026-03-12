@@ -1,6 +1,6 @@
 #pragma once
 
-#include "silence_arc/domain/neural_network.h"
+#include "silence_arc/domain/neural_engine.h"
 #include <dnnl.hpp>
 #include <sycl/sycl.hpp>
 #include <memory>
@@ -12,14 +12,11 @@
 
 namespace sa::infrastructure {
 
-struct OneDNNLayer {
-    dnnl::primitive prim;
-    std::unordered_map<int, dnnl::memory> args;
-    std::string name;
-    std::function<void()> custom_exec = nullptr;
-};
-
-class alignas(64) OneDNNInferenceEngine : public domain::NeuralNetworkModel {
+/**
+ * @brief oneDNN implementation of the Neural Engine.
+ * Encapsulates dnnl primitives and memory for inference on Intel Arc.
+ */
+class alignas(64) OneDNNInferenceEngine : public domain::INeuralEngine {
 public:
     OneDNNInferenceEngine(sycl::queue& queue, dnnl::engine& engine, dnnl::stream& stream);
     ~OneDNNInferenceEngine() override = default;
@@ -29,15 +26,16 @@ public:
     void infer(const float* erb_features, const float* df_features, float* output_mask, float* df_coefs) override;
     size_t get_df_coefs_count() const override;
 
-    void reset();
-
-    // Test helpers
-    void test_conv2d_mapping();
-    void test_batchnorm_mapping();
-    void test_gru_mapping();
-    void test_linear_mapping();
+    void reset() override;
 
 private:
+    struct OneDNNLayer {
+        dnnl::primitive prim;
+        std::unordered_map<int, dnnl::memory> args;
+        std::string name;
+        std::function<void()> custom_exec = nullptr;
+    };
+
     void setup_encoder();
     void setup_erb_decoder();
     void setup_df_decoder();

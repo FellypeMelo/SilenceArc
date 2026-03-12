@@ -813,20 +813,13 @@ void OneDNNInferenceEngine::setup_df_decoder() {
     // df_convp.2 is pointwise [in=10, out=10]
     add_conv2d(m_df_decoder_layers, "df_dec.df_convp.2.weight", df_p, df_p, 10, 1, 1, 0, 0, 0, 0, 1, 1);
     add_batchnorm(m_df_decoder_layers, "df_dec.df_convp.3", df_p, df_p);
+    m_persistent_mems["df_dec_convp_out"] = df_p; // Ensure persistence
     
     // 4. Grouped Linear to final Coefficients
     memory df_linear_out;
     add_grouped_linear(m_df_decoder_layers, "df_dec.df_out.0.weight", gru_out_nchw, df_linear_out, 16);
     
     // 5. Final Sum: df_linear_out + df_convp
-    // Need to ensure shapes match [1, 960, 1, 1] vs [1, 10, 1, 96]
-    // Reorder df_p to flat coefficients
-    memory df_p_flat;
-    auto df_p_dims = df_p.get_desc().get_dims(); // [1, 10, 1, 96]
-    memory::dims flat_dims = {1, 960, 1, 1};
-    memory::dims flat_strides = {960, 1, 960, 960}; // Access as [bin][order*2]
-    auto df_p_view_md = memory::desc(flat_dims, memory::data_type::f32, flat_strides);
-    
     // The sum must be done in SYCL to handle the [F, O*2] vs [F*O*2] mapping correctly
     OneDNNLayer final_sum;
     final_sum.name = "DF_Final_Sum";
@@ -836,21 +829,27 @@ void OneDNNInferenceEngine::setup_df_decoder() {
     sycl::queue q = m_queue;
     final_sum.custom_exec = [q, p_ptr, l_ptr]() mutable {
         q.submit([&](sycl::handler& cgh) {
-            cgh.parallel_for<class DfFinalSum>(sycl::range<1>(960), [=](sycl::id<1> id) {
-                int i = id[0];
-                // df_p is [1, 10, 1, 96] -> [order*2][bin]
-                int bin = i / 10;
-                int ch = i % 10;
-                int p_idx = ch * 96 + bin;
-                l_ptr[i] = std::tanh(l_ptr[i]) + p_ptr[p_idx];
+            // DeepFilterNet3 only has complex DF coefficients for the first 96 bins
+            cgh.parallel_for<class DfFinalSum>(sycl::range<1>(96), [=](sycl::id<1> id) {
+                int bin = id[0];
+                // Each bin has 5 taps * 2 values (Real, Imag) = 10 floats
+                for (int t = 0; t < 5; ++t) {
+                    int l_idx_re = (bin * 5 + t) * 2 + 0;
+                    int l_idx_im = (bin * 5 + t) * 2 + 1;
+                    
+                    // df_p is [1, 10, 1, 96] -> [order*2, bin]
+                    int p_idx_re = (t * 2 + 0) * 96 + bin;
+                    int p_idx_im = (t * 2 + 1) * 96 + bin;
+                    
+                    l_ptr[l_idx_re] = std::tanh(l_ptr[l_idx_re]) + p_ptr[p_idx_re];
+                    l_ptr[l_idx_im] = std::tanh(l_ptr[l_idx_im]) + p_ptr[p_idx_im];
+                }
             });
         });
-        q.wait_and_throw();
     };
     m_df_decoder_layers.push_back(final_sum);
     
     m_persistent_mems["df_coefs_out"] = df_linear_out;
-    std::cout << "[SUCCESS] DF Decoder ready." << std::endl;
 }
 
 void OneDNNInferenceEngine::infer_erb(const float* erb_features, float* output_mask) {
@@ -864,10 +863,7 @@ void OneDNNInferenceEngine::infer(const float* erb_features, const float* df_fea
     try {
         auto erb_mem = safe_at(m_persistent_mems, "encoder_erb_input");
         m_queue.memcpy(erb_mem.get_data_handle(), erb_features, 32 * sizeof(float)).wait();
-        static int frame_count = 0;
-        if (frame_count % 100 == 0) {
-            std::cout << "[DEBUG] Frame " << frame_count << " ERB In: " << erb_features[0] << ", " << erb_features[1] << std::endl;
-        }
+        
         auto df_input_mem = safe_at(m_persistent_mems, "encoder_df_input");
         std::vector<float> df_reordered(2 * 96);
         for (int i = 0; i < 96; ++i) {
@@ -875,6 +871,7 @@ void OneDNNInferenceEngine::infer(const float* erb_features, const float* df_fea
             df_reordered[96 + i] = df_features[i * 2 + 1];
         }
         m_queue.memcpy(df_input_mem.get_data_handle(), df_reordered.data(), 2 * 96 * sizeof(float)).wait();
+        
         for (auto& layer : m_encoder_layers) {
             if (layer.custom_exec) layer.custom_exec();
             else layer.prim.execute(m_stream, layer.args);
@@ -888,14 +885,11 @@ void OneDNNInferenceEngine::infer(const float* erb_features, const float* df_fea
             else layer.prim.execute(m_stream, layer.args);
         }
         m_stream.wait();
+        
         auto mask_mem = safe_at(m_persistent_mems, "erb_mask_out");
         m_queue.memcpy(output_mask, mask_mem.get_data_handle(), 32 * sizeof(float)).wait();
         auto df_mem = safe_at(m_persistent_mems, "df_coefs_out");
         m_queue.memcpy(df_coefs, df_mem.get_data_handle(), 960 * sizeof(float)).wait();
-        if (frame_count % 100 == 0) {
-            std::cout << "[DEBUG] Frame " << frame_count << " Mask Out: " << output_mask[0] << ", " << output_mask[1] << std::endl;
-        }
-        frame_count++;
     } catch (const std::exception& e) {
         std::cerr << "[ERROR] oneDNN inference failed: " << e.what() << std::endl;
         throw;
@@ -912,13 +906,8 @@ void OneDNNInferenceEngine::reset() {
         auto dims = desc.get_dims();
         size_t size = 1;
         for (auto d : dims) size *= d;
-        m_queue.fill(mem.get_data_handle(), 0.0f, size).wait();
+        m_queue.fill(mem.get_data_handle(), 0.0f, size * sizeof(float)).wait();
     }
 }
-
-void OneDNNInferenceEngine::test_conv2d_mapping() {}
-void OneDNNInferenceEngine::test_batchnorm_mapping() {}
-void OneDNNInferenceEngine::test_gru_mapping() {}
-void OneDNNInferenceEngine::test_linear_mapping() {}
 
 } // namespace sa::infrastructure

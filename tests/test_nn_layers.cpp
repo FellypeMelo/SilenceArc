@@ -18,13 +18,15 @@ int main() {
         OneDNNInferenceEngine engine(accel.get_queue(), accel.get_dnnl_engine(), accel.get_dnnl_stream());
         
         std::cout << "[INFO] Loading weights..." << std::endl;
-        if (!engine.load_weights("models/df3_weights")) {
-            std::cerr << "Weights load failed" << std::endl;
+        std::filesystem::path weights_path = std::filesystem::current_path();
+        if (weights_path.filename() == "build") weights_path = weights_path.parent_path();
+        weights_path = weights_path / "models" / "df3_weights";
+
+        if (!engine.load_weights(weights_path.string())) {
+            std::cerr << "Weights load failed at: " << weights_path << std::endl;
             return 1;
         }
 
-        engine.test_gru_mapping();
-        
         std::vector<float> dummy_erb(32, 1.0f);
         std::vector<float> output_mask(32, 0.0f);
         

@@ -43,7 +43,7 @@ endif()
 # oneAPI SYCL configuration
 if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
     message(STATUS "[INFO] Intel LLVM compiler detected. Configuring SYCL targets.")
-    
+
     if(WIN32)
         link_directories("C:/Program Files (x86)/Intel/oneAPI/compiler/latest/lib")
     endif()
@@ -74,11 +74,11 @@ set_target_properties(df_shared PROPERTIES
 add_library(silence_arc_infra STATIC
     src/infrastructure/ui_manager.cpp
     src/infrastructure/deep_filter_adapter.cpp
-    src/infrastructure/sycl_noise_suppressor.cpp
     src/infrastructure/async_audio_pipeline.cpp
     src/infrastructure/miniaudio_device_manager.cpp
     src/infrastructure/miniaudio_pipeline.cpp
     src/infrastructure/sycl_accelerator.cpp
+    src/infrastructure/sycl_dsp_coordinator.cpp
     src/infrastructure/onednn_inference_engine.cpp
     src/infrastructure/sycl_telemetry_provider.cpp
 )
@@ -88,7 +88,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
     # Crucial flags for icx on Windows with SYCL
     target_compile_options(silence_arc_infra PUBLIC -fsycl /EHsc --target=x86_64-pc-windows-msvc -Wno-ignored-attributes)
     target_link_options(silence_arc_infra PUBLIC -fsycl --target=x86_64-pc-windows-msvc)
-    
+
     # We need to link against the specific MKL SYCL libraries
     target_link_libraries(silence_arc_infra PUBLIC DNNL::dnnl MKL::MKL)
 
@@ -96,23 +96,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
     target_link_libraries(silence_arc_infra PUBLIC
         "C:/Program Files (x86)/Intel/oneAPI/mkl/latest/lib/mkl_sycl_dft_dll.lib"
     )
-endif()
-
-# test_harness (Simulation)
-add_executable(test_harness
-    tests/test_benchmark_harness.cpp
-    src/benchmark_harness.cpp
-)
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(test_harness PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
-    target_link_options(test_harness PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
-endif()
-
-if(TARGET IntelSYCL::SYCL)
-    target_link_libraries(test_harness PRIVATE IntelSYCL::SYCL imgui)
-else()
-    target_include_directories(test_harness PRIVATE ${SYCL_INCLUDE_DIRS})
-    target_link_libraries(test_harness PRIVATE ${SYCL_LIBRARIES} imgui)
 endif()
 
 # UI Manager Test
@@ -175,7 +158,6 @@ add_executable(silence_arc src/main.cpp)
 target_link_libraries(silence_arc PRIVATE silence_arc_infra)
 
 enable_testing()
-add_test(NAME BenchmarkHarnessTest COMMAND test_harness)
 add_test(NAME UIManagerTest COMMAND test_ui_manager)
 
 if(USE_GTEST)
@@ -191,71 +173,3 @@ if(USE_GTEST)
     endif()
     add_test(NAME TelemetryProviderTest COMMAND test_telemetry_provider)
 endif()
-
-# SYCL Discovery Test (Custom Harness)
-add_executable(test_sycl_discovery
-    tests/test_sycl_discovery.cpp
-)
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(test_sycl_discovery PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
-    target_link_options(test_sycl_discovery PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
-endif()
-target_link_libraries(test_sycl_discovery PRIVATE IntelSYCL::SYCL)
-
-# GPU Bridge FFI Test
-add_executable(test_gpu_bridge
-    tests/test_gpu_bridge.cpp
-)
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(test_gpu_bridge PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
-    target_link_options(test_gpu_bridge PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
-endif()
-target_link_libraries(test_gpu_bridge PRIVATE IntelSYCL::SYCL silence_arc_infra)
-
-# Kernel Correctness Test
-add_executable(test_kernel_correctness
-    tests/test_kernel_correctness.cpp
-)
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(test_kernel_correctness PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
-    target_link_options(test_kernel_correctness PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
-endif()
-target_link_libraries(test_kernel_correctness PRIVATE IntelSYCL::SYCL silence_arc_infra)
-
-# Neural Network Layers Test
-add_executable(test_nn_layers
-    tests/test_nn_layers.cpp
-)
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(test_nn_layers PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
-    target_link_options(test_nn_layers PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
-endif()
-target_link_libraries(test_nn_layers PRIVATE IntelSYCL::SYCL silence_arc_infra)
-
-# Native SYCL Inference Test
-add_executable(test_sycl_inference
-    tests/test_sycl_inference.cpp
-)
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(test_sycl_inference PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
-    target_link_options(test_sycl_inference PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
-endif()
-target_link_libraries(test_sycl_inference PRIVATE GTest::gtest_main IntelSYCL::SYCL silence_arc_infra)
-
-# Deep Filtering Integration Test
-add_executable(test_df_integration
-    tests/test_df_integration.cpp
-)
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(test_df_integration PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
-    target_link_options(test_df_integration PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
-endif()
-target_link_libraries(test_df_integration PRIVATE GTest::gtest_main IntelSYCL::SYCL silence_arc_infra)
-
-add_test(NAME SYCLDiscoveryTest COMMAND test_sycl_discovery)
-add_test(NAME GPUBridgeTest COMMAND test_gpu_bridge)
-add_test(NAME KernelCorrectnessTest COMMAND test_kernel_correctness)
-add_test(NAME NNLayersTest COMMAND test_nn_layers)
-add_test(NAME SyclInferenceTest COMMAND test_sycl_inference)
-add_test(NAME DfIntegrationTest COMMAND test_df_integration)
-

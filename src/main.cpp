@@ -1,6 +1,5 @@
 #include "silence_arc/infrastructure/ui_manager.h"
 #include "silence_arc/infrastructure/deep_filter_adapter.h"
-#include "silence_arc/infrastructure/sycl_noise_suppressor.h"
 #include "silence_arc/infrastructure/miniaudio_pipeline.h"
 #include "silence_arc/infrastructure/miniaudio_device_manager.h"
 #include "silence_arc/infrastructure/sycl_accelerator.h"
@@ -15,15 +14,13 @@
 int main() {
     std::cout << "Starting Silence Arc..." << std::endl;
 
-    bool sycl_available = false;
-    // Initialize SYCL Acceleration (Arc GPU)
+    // Initialize SYCL Acceleration (Arc GPU) for Telemetry
     if (sycl_init()) {
         char dev_name[256];
         sycl_get_device_name(dev_name, 256);
         std::cout << "[SUCCESS] Hardware Acceleration enabled on: " << dev_name << std::endl;
-        sycl_available = true;
     } else {
-        std::cout << "[WARN] Hardware Acceleration not available. Using CPU fallback." << std::endl;
+        std::cout << "[WARN] Hardware Acceleration not available. Telemetry may be limited." << std::endl;
     }
 
     silence_arc::infrastructure::UIManager ui;
@@ -34,15 +31,9 @@ int main() {
 
     silence_arc::infrastructure::SyclTelemetryProvider telemetry_provider;
 
-    std::unique_ptr<silence_arc::domain::INoiseSuppressor> suppressor;
-    
-    if (sycl_available) {
-        suppressor = std::make_unique<silence_arc::infrastructure::SyclNoiseSuppressor>();
-        std::cout << "[INFO] Using Native SYCL Noise Suppressor." << std::endl;
-    } else {
-        suppressor = std::make_unique<silence_arc::infrastructure::DeepFilterAdapter>();
-        std::cout << "[INFO] Using DeepFilterNet CPU Adapter (Rust)." << std::endl;
-    }
+    // Use stable Rust DeepFilterAdapter
+    auto suppressor = std::make_unique<silence_arc::infrastructure::DeepFilterAdapter>();
+    std::cout << "[INFO] Using DeepFilterNet Rust Adapter." << std::endl;
 
     auto path = std::filesystem::current_path();
     if (path.filename() == "build") {
@@ -89,8 +80,6 @@ int main() {
         if (push_size > 0) {
             out_buffer.Pop(output.data.data(), push_size);
         }
-        
-        // If we don't have enough, the rest of output.data is already 0.0 from initialization
         
         auto end_time = std::chrono::steady_clock::now();
         auto process_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
