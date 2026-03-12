@@ -439,13 +439,13 @@ impl DfTract {
     ///     - gains: Gain estimates of shape `[n_ch, 1, 1, n_erb]`.
     ///     - coefs: Real-valued DF coefficients estimates of shape `[n_ch, 1, 1, n_erb, 2]`.
     pub fn process_raw(&mut self) -> Result<(f32, Option<Tensor>, Option<Tensor>)> {
-        let spec = self.spec_buf.to_array_view()?;
-        let ch = spec.len_of(Axis(0));
+        let spec = self.spec_buf.to_array_view::<f32>()?;
+        let ch = spec.len_of(ndarray::Axis(0));
 
         for (nsy_ch, mut erb_ch, mut cplx_ch, state) in izip!(
-            spec.axis_iter(Axis(0)),
-            tvalue_to_array_view_mut(&mut self.erb_buf).axis_iter_mut(Axis(0)),
-            tvalue_to_array_view_mut(&mut self.cplx_buf).axis_iter_mut(Axis(0)),
+            spec.axis_iter(ndarray::Axis(0)),
+            tvalue_to_array_view_mut(&mut self.erb_buf).axis_iter_mut(ndarray::Axis(0)),
+            tvalue_to_array_view_mut(&mut self.cplx_buf).axis_iter_mut(ndarray::Axis(0)),
             self.df_states.iter_mut()
         ) {
             let nsy_ch = as_slice_complex(nsy_ch.as_slice().unwrap());
@@ -507,7 +507,7 @@ impl DfTract {
 
     /// Process a noisy time domain sample and return the enhanced sample via mutable argument.
     pub fn process(&mut self, noisy: ArrayView2<f32>, mut enh: ArrayViewMut2<f32>) -> Result<f32> {
-        debug_assert_eq!(noisy.len_of(Axis(0)), enh.len_of(Axis(0)));
+        debug_assert_eq!(noisy.len_of(ndarray::Axis(0)), enh.len_of(ndarray::Axis(0)));
         debug_assert_eq!(noisy.len_of(Axis(1)), enh.len_of(Axis(1)));
         debug_assert_eq!(noisy.len_of(Axis(1)), self.hop_size);
         let (max_a, e) = noisy.iter().fold((0f32, 0f32), |acc, x| {
@@ -531,8 +531,8 @@ impl DfTract {
         self.rolling_spec_buf_y.pop_front();
         self.rolling_spec_buf_x.pop_front();
         for (ns_ch, mut rbuf, state) in izip!(
-            noisy.axis_iter(Axis(0)),
-            self.spec_buf.to_array_view_mut()?.axis_iter_mut(Axis(0)),
+            noisy.axis_iter(ndarray::Axis(0)),
+            self.spec_buf.to_array_view_mut()?.axis_iter_mut(ndarray::Axis(0)),
             self.df_states.iter_mut(),
         ) {
             let spec = as_slice_mut_complex(rbuf.as_slice_mut().unwrap());
@@ -558,7 +558,7 @@ impl DfTract {
             if gains.shape()[0] < noisy.shape()[0] {
                 // Mask was reduced to single channel
                 let gain_slc = gains.as_slice_mut().unwrap();
-                for mut spec_ch in spec.axis_iter_mut(Axis(0)) {
+                for mut spec_ch in spec.axis_iter_mut(ndarray::Axis(0)) {
                     self.df_states[0].apply_mask(
                         as_slice_mut_complex(spec_ch.as_slice_mut().unwrap()),
                         gain_slc,
@@ -567,7 +567,7 @@ impl DfTract {
             } else {
                 // Same number of channels of gains and spec
                 for (gains_ch, mut spec_ch) in
-                    gains.axis_iter(Axis(0)).zip(spec.axis_iter_mut(Axis(0)))
+                    gains.axis_iter(ndarray::Axis(0)).zip(spec.axis_iter_mut(ndarray::Axis(0)))
                 {
                     let gain_slc = gains_ch.as_slice().unwrap();
                     self.df_states[0].apply_mask(
@@ -630,8 +630,8 @@ impl DfTract {
 
         for (state, spec_ch, mut enh_out_ch) in izip!(
             self.df_states.iter_mut(),
-            spec_enh.axis_iter(Axis(0)),
-            enh.axis_iter_mut(Axis(0)),
+            spec_enh.axis_iter(ndarray::Axis(0)),
+            enh.axis_iter_mut(ndarray::Axis(0)),
         ) {
             state.synthesis(
                 spec_ch.to_owned().as_slice_mut().unwrap(),
@@ -772,7 +772,7 @@ fn init_encoder_impl(
     n_ch: usize,
 ) -> Result<TypedModel> {
     log::debug!("Start init encoder.");
-    let s = m.symbol_table.sym("S");
+    let s = m.symbols.sym("S");
 
     let nb_erb = df_cfg.get("nb_erb").unwrap().parse::<usize>()?;
     let nb_df = df_cfg.get("nb_df").unwrap().parse::<usize>()?;
@@ -821,7 +821,7 @@ fn init_erb_decoder_impl(
     mask_reduction: Option<ReduceMask>,
 ) -> Result<TypedModel> {
     log::debug!("Start init ERB decoder.");
-    let s = m.symbol_table.sym("S");
+    let s = m.symbols.sym("S");
 
     let nb_erb = df_cfg.get("nb_erb").unwrap().parse::<usize>()?;
     let layer_width = net_cfg.get("conv_ch").unwrap().parse::<usize>()?;
@@ -934,7 +934,7 @@ fn init_df_decoder_impl(
     n_ch: usize,
 ) -> Result<TypedModel> {
     log::debug!("Start init DF decoder.");
-    let s = m.symbol_table.sym("S");
+    let s = m.symbols.sym("S");
 
     let nb_erb = df_cfg.get("nb_erb").unwrap().parse::<usize>()?;
     let nb_df = df_cfg.get("nb_df").unwrap().parse::<usize>()?;
