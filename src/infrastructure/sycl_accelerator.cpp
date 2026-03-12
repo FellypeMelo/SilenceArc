@@ -221,6 +221,7 @@ void SYCLAccelerator::reset() {
 void SYCLAccelerator::process_frame(const float* input, float* output, size_t size) {
     if (!m_queue || size != m_hop_size) return;
 
+    static int frame_count_global = 0;
     try {
         auto q = *m_queue;
         float* window = m_window_buffer;
@@ -241,6 +242,7 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
         const size_t nb_erb_val = m_nb_erb;
         const size_t nb_df_val = m_nb_df;
         const bool df_enabled_val = m_df_enabled;
+        const int frame_count = frame_count_global;
 
         // 1. Analysis
         q.memcpy(analysis + overlap_size_val, input, hop_size_val * sizeof(float)).wait();
@@ -288,7 +290,7 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
         for (size_t i = 0; i < nb_erb_val; ++i) {
             float lp = std::log10(host_erb[i] + 1e-10f) * 10.0f;
             m_erb_mean[i] = lp * (1.0f - alpha) + m_erb_mean[i] * alpha;
-            host_erb[i] = (lp - m_erb_mean[i]) / 40.0f;
+            host_erb[i] = (lp - m_erb_mean[i]) / 20.0f;
         }
 
         // 4. Complex Unit Normalization for DF path
@@ -323,30 +325,56 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
             float* c_ptr = m_df_coefs;
             std::complex<float>* h_ptr = history;
             h.parallel_for(sycl::range<1>(freq_size_val), [=](sycl::id<1> f_idx) {
-                float m = 0.0f;
-                for (size_t e = 0; e < nb_erb_val; ++e) {
-                    m += m_ptr[e] * inv_fb_ptr[e * freq_size_val + f_idx];
-                }
-                std::complex<float> res = freq[f_idx] * std::clamp(m, 0.0f, 1.0f);
-
-                if (df_enabled_val && f_idx < nb_df_val) {
-                    std::complex<float> df(0.0f, 0.0f);
-                    for (size_t i = 0; i < df_order_val; ++i) {
-                        std::complex<float> c(c_ptr[(f_idx * df_order_val + i) * 2 + 0], c_ptr[(f_idx * df_order_val + i) * 2 + 1]);
-                        df += c * h_ptr[i * freq_size_val + f_idx];
-                    }
-                    filtered_freq[f_idx] = df;
-                } else {
-                    filtered_freq[f_idx] = res;
-                }
-
-                // Update History (Frame Delay for next iteration)
+                // 1. Update History FIRST (Shift and insert current frame)
                 for (int i = static_cast<int>(df_order_val) - 1; i > 0; --i) {
                     h_ptr[i * freq_size_val + f_idx] = h_ptr[(i - 1) * freq_size_val + f_idx];
                 }
                 h_ptr[f_idx] = freq[f_idx];
+
+                // 2. ERB Mask logic
+                // The model output at frame 't' is for frame 't - lookahead'
+                // Lookahead for DF3 is 2.
+                const int lookahead = 2;
+                float m = 0.0f;
+                for (size_t e = 0; e < nb_erb_val; ++e) {
+                    m += m_ptr[e] * inv_fb_ptr[e * freq_size_val + f_idx];
+                }
+                
+                // Base frame for output is history[lookahead] (t-2)
+                std::complex<float> target_frame = h_ptr[lookahead * freq_size_val + f_idx];
+                std::complex<float> masked_frame = target_frame * std::clamp(m, 0.0f, 1.0f);
+
+                // 3. Deep Filter logic
+                if (df_enabled_val && f_idx < nb_df_val) {
+                    std::complex<float> df(0.0f, 0.0f);
+                    for (size_t i = 0; i < df_order_val; ++i) {
+                        std::complex<float> tap_coef(c_ptr[(f_idx * df_order_val + i) * 2 + 0], 
+                                                   c_ptr[(f_idx * df_order_val + i) * 2 + 1]);
+                        
+                        // DF3 Order 5, Lookahead 2.
+                        // Coefs i=0..4 are for window [t-2, t-1, t, t+1, t+2]
+                        // We are at physical time T. 
+                        // history[0]=T, history[1]=T-1, history[2]=T-2, history[3]=T-3, history[4]=T-4
+                        // For target t = T-2:
+                        // t-2 = T-4 (history[4])
+                        // t-1 = T-3 (history[3])
+                        // t   = T-2 (history[2])
+                        // t+1 = T-1 (history[1])
+                        // t+2 = T   (history[0])
+                        
+                        // Map i=0..4 to history[4..0]
+                        std::complex<float> hist_frame = h_ptr[(df_order_val - 1 - i) * freq_size_val + f_idx];
+                        df += tap_coef * hist_frame;
+                    }
+                    filtered_freq[f_idx] = df;
+                } else {
+                    // For bins > 96, use the masked result from ERB pathway
+                    filtered_freq[f_idx] = masked_frame;
+                }
             });
         }).wait();
+
+        frame_count_global++;
 
         oneapi::mkl::dft::compute_backward(*m_ifft_config, filtered_freq, reconstructed).wait();
 

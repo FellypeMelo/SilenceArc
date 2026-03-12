@@ -17,11 +17,10 @@
     - [x] Resolve any mismatches causing "robotic" artifacts.
 - [x] **Task: Conductor - User Manual Verification 'Phase 2: Architectural Parity & Mapping' (Protocol in workflow.md)**
 
-## Phase 3: Validation & Quality Assurance
-- [x] **Task: Integration Testing & Metrics**
-    - [x] Run `test_df_integration.exe` and verify SNR improvement >= 15dB.
-    - [x] Validate natural sound preservation in `ErbOnlyProvidesNaturalSound` test case.
-- [x] **Task: Latency Benchmarking**
-    - [x] Measure end-to-end inference latency on Intel Arc GPU.
-    - [x] Ensure latency is within the real-time budget for 48kHz audio.
-- [x] **Task: Conductor - User Manual Verification 'Phase 3: Validation & Quality Assurance' (Protocol in workflow.md)**
+## Phase 4: Audio Quality Refinement
+- [x] **Task: Resolve Robotic Audio Artifacts**
+    - [x] Implement 2-frame lookahead compensation in filtering kernel.
+    - [x] Correct ERB normalization divisor to 20.0f.
+    - [x] Align FIR window taps with model expectations [t-2, t-1, t, t+1, t+2].
+    - [x] Verify SNR and RMSE metrics in integration tests.
+- [x] **Task: Conductor - User Manual Verification 'Phase 4: Audio Quality Refinement' (Protocol in workflow.md)**
