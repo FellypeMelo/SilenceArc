@@ -13,3 +13,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [x] **Track: Create a Deep Documentation of all the Aplication Explaning eveything Every Good Things and the ideia of a first Noise Supression Real Time for Intel Only.**
   *Link: [./archive/deep-docs_20260309/](./archive/deep-docs_20260309/)*
+
+---
+
+- [ ] **Track: Limpeza de Código e Modularização Do Projeto - Clean Code, Kiss e YAGNI**
+  *Link: [./tracks/cleanup-modularization_20260311/](./tracks/cleanup-modularization_20260311/)*
