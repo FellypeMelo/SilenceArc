@@ -60,5 +60,9 @@ void DeepFilterAdapter::SetAttenuationLimit(float limit_db) {
     }
 }
 
+void DeepFilterAdapter::SetDeepFilteringEnabled(bool /*enabled*/) {
+    // Rust adapter handles DF path internally via model config
+}
+
 } // namespace infrastructure
 } // namespace silence_arc
