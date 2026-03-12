@@ -1,30 +1,28 @@
-#ifndef SILENCE_ARC_INFRASTRUCTURE_MINIAUDIO_PIPELINE_H_
-#define SILENCE_ARC_INFRASTRUCTURE_MINIAUDIO_PIPELINE_H_
+#pragma once
 
 #include "silence_arc/domain/audio_pipeline.h"
+#include <string>
 #include <memory>
-#include <atomic>
+#include <functional>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
 
 class MiniaudioPipeline : public domain::IAudioPipeline {
 public:
+    using ProcessCallback = std::function<void(const domain::AudioBuffer&, domain::AudioBuffer&)>;
+
     MiniaudioPipeline();
     ~MiniaudioPipeline() override;
 
-    bool Start(const std::string& input_device_id = "", const std::string& output_device_id = "") override;
+    bool Start(const std::string& input_device_id, const std::string& output_device_id) override;
     void Stop() override;
     bool IsRunning() const override;
 
-    void SetProcessCallback(domain::IAudioPipeline::ProcessCallback callback) override;
+    void SetProcessCallback(ProcessCallback callback);
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::unique_ptr<Impl> m_impl;
 };
 
-} // namespace infrastructure
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_INFRASTRUCTURE_MINIAUDIO_PIPELINE_H_
+} // namespace sa::infrastructure

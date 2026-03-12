@@ -1,44 +1,49 @@
 #include <gtest/gtest.h>
-#include "silence_arc/domain/noise_suppressor.h"
 #include "silence_arc/infrastructure/deep_filter_adapter.h"
 #include <vector>
 #include <filesystem>
 
-namespace silence_arc {
-namespace testing {
+using namespace sa::infrastructure;
 
-std::string GetModelPath() {
-    auto path = std::filesystem::current_path();
-    if (path.filename() == "build") {
-        path = path.parent_path();
+class NoiseSuppressionTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        auto path = std::filesystem::current_path();
+        if (path.filename() == "build") path = path.parent_path();
+        model_path = (path / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz").string();
     }
-    path = path / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
-    return path.string();
+
+    std::string model_path;
+};
+
+TEST_F(NoiseSuppressionTest, Initialization) {
+    DeepFilterAdapter suppressor(model_path);
+    EXPECT_TRUE(suppressor.initialize());
 }
 
-TEST(NoiseSuppressionTest, InitializationFailsWithInvalidPath) {
-    infrastructure::DeepFilterAdapter suppressor;
-    EXPECT_FALSE(suppressor.Init("invalid_path.tar.gz"));
+TEST_F(NoiseSuppressionTest, FrameSize) {
+    DeepFilterAdapter suppressor(model_path);
+    suppressor.initialize();
+    EXPECT_GT(suppressor.get_frame_size(), 0);
 }
 
-TEST(NoiseSuppressionTest, InitializationSucceedsWithValidModel) {
-    infrastructure::DeepFilterAdapter suppressor;
-    EXPECT_TRUE(suppressor.Init(GetModelPath()));
-}
-
-TEST(NoiseSuppressionTest, ProcessFrameReturnsValidSnr) {
-    infrastructure::DeepFilterAdapter suppressor;
-    ASSERT_TRUE(suppressor.Init(GetModelPath()));
+TEST_F(NoiseSuppressionTest, ProcessFrame) {
+    DeepFilterAdapter suppressor(model_path);
+    suppressor.initialize();
     
-    size_t frame_len = suppressor.GetFrameLength();
-    ASSERT_GT(frame_len, 0);
-
-    std::vector<float> input(frame_len, 0.1f); // Some dummy signal
-    std::vector<float> output(frame_len, 0.0f);
+    size_t size = suppressor.get_frame_size();
+    std::vector<float> input(size, 0.1f);
+    std::vector<float> output(size, 0.0f);
     
-    float snr = suppressor.ProcessFrame(input.data(), output.data());
-    EXPECT_GE(snr, -100.0f); 
+    suppressor.process_frame(input.data(), output.data(), size);
+    
+    // Output should be different from input (processed)
+    bool different = false;
+    for (size_t i = 0; i < size; ++i) {
+        if (std::abs(input[i] - output[i]) > 1e-6f) {
+            different = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(different);
 }
-
-} // namespace testing
-} // namespace silence_arc

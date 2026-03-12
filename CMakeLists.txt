@@ -19,7 +19,8 @@ FetchContent_MakeAvailable(json)
 add_subdirectory(third_party/imgui)
 
 include_directories(include)
-include_directories(tests) # For sycl_test_harness.h
+include_directories(tests) 
+include_directories(tests/utils)
 include_directories(third_party/miniaudio)
 
 # Level Zero SDK Paths (Detected)
@@ -38,6 +39,10 @@ if(USE_GTEST)
     )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
+    
+    # Correctly add GTest includes after FetchContent
+    include_directories(${googletest_SOURCE_DIR}/googletest/include)
+    include_directories(${googletest_SOURCE_DIR}/googlemock/include)
 endif()
 
 # oneAPI SYCL configuration
@@ -78,9 +83,17 @@ add_library(silence_arc_infra STATIC
     src/infrastructure/miniaudio_device_manager.cpp
     src/infrastructure/miniaudio_pipeline.cpp
     src/infrastructure/sycl_accelerator.cpp
-    src/infrastructure/sycl_dsp_coordinator.cpp
-    src/infrastructure/onednn_inference_engine.cpp
     src/infrastructure/sycl_telemetry_provider.cpp
+    src/infrastructure/sycl/sycl_memory_manager.cpp
+    src/infrastructure/sycl/sycl_dsp_engine.cpp
+    src/infrastructure/sycl/sycl_graph_builder.cpp
+    src/infrastructure/sycl/linear_layer.cpp
+    src/infrastructure/sycl/grouped_linear_layer.cpp
+    src/infrastructure/sycl/binary_add_layer.cpp
+    src/infrastructure/sycl/conv2d_layer.cpp
+    src/infrastructure/sycl/normalization_layer.cpp
+    src/infrastructure/sycl/native_sycl_engine.cpp
+    src/domain/audio_stream_buffer.cpp
 )
 target_link_libraries(silence_arc_infra PUBLIC imgui df_shared nlohmann_json::nlohmann_json ze_loader)
 
@@ -93,8 +106,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
     target_link_libraries(silence_arc_infra PUBLIC DNNL::dnnl MKL::MKL)
 
     # Try to add explicit SYCL DFT linkage if the meta-target is insufficient
+    # Explicitly add mkl_sycl_dft and core libraries
     target_link_libraries(silence_arc_infra PUBLIC
         "C:/Program Files (x86)/Intel/oneAPI/mkl/latest/lib/mkl_sycl_dft_dll.lib"
+        "C:/Program Files (x86)/Intel/oneAPI/mkl/latest/lib/mkl_intel_ilp64_dll.lib"
+        "C:/Program Files (x86)/Intel/oneAPI/mkl/latest/lib/mkl_core_dll.lib"
+        "C:/Program Files (x86)/Intel/oneAPI/mkl/latest/lib/mkl_intel_thread_dll.lib"
     )
 endif()
 
@@ -102,7 +119,11 @@ endif()
 add_executable(test_ui_manager
     tests/test_ui_manager.cpp
 )
-target_link_libraries(test_ui_manager PRIVATE silence_arc_infra)
+target_link_libraries(test_ui_manager PRIVATE GTest::gtest_main silence_arc_infra)
+if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+    target_compile_options(test_ui_manager PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
+    target_link_options(test_ui_manager PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
+endif()
 
 if(USE_GTEST)
     # Noise Suppression Test (GTest)
@@ -172,4 +193,60 @@ if(USE_GTEST)
         target_link_options(test_telemetry_provider PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
     endif()
     add_test(NAME TelemetryProviderTest COMMAND test_telemetry_provider)
+
+    # SYCL Foundation Test (GTest)
+    add_executable(test_sycl_foundation
+        tests/test_sycl_foundation.cpp
+    )
+    target_link_libraries(test_sycl_foundation PRIVATE
+        GTest::gtest_main
+        silence_arc_infra
+    )
+    if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+        target_compile_options(test_sycl_foundation PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
+        target_link_options(test_sycl_foundation PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
+    endif()
+    add_test(NAME SyclFoundationTest COMMAND test_sycl_foundation)
+
+    # SYCL DSP Test (GTest)
+    add_executable(test_sycl_dsp
+        tests/test_sycl_dsp.cpp
+    )
+    target_link_libraries(test_sycl_dsp PRIVATE
+        GTest::gtest_main
+        silence_arc_infra
+    )
+    if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+        target_compile_options(test_sycl_dsp PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
+        target_link_options(test_sycl_dsp PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
+    endif()
+    add_test(NAME SyclDspTest COMMAND test_sycl_dsp)
+
+    # SYCL Graph Test (GTest)
+    add_executable(test_sycl_graph
+        tests/test_sycl_graph.cpp
+    )
+    target_link_libraries(test_sycl_graph PRIVATE
+        GTest::gtest_main
+        silence_arc_infra
+    )
+    if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+        target_compile_options(test_sycl_graph PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
+        target_link_options(test_sycl_graph PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
+    endif()
+    add_test(NAME SyclGraphTest COMMAND test_sycl_graph)
+
+    # Native SYCL Engine Test (GTest)
+    add_executable(test_native_sycl_engine
+        tests/test_native_sycl_engine.cpp
+    )
+    target_link_libraries(test_native_sycl_engine PRIVATE
+        GTest::gtest_main
+        silence_arc_infra
+    )
+    if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+        target_compile_options(test_native_sycl_engine PRIVATE -fsycl /EHsc --target=x86_64-pc-windows-msvc)
+        target_link_options(test_native_sycl_engine PRIVATE -fsycl --target=x86_64-pc-windows-msvc)
+    endif()
+    add_test(NAME NativeSyclEngineTest COMMAND test_native_sycl_engine)
 endif()

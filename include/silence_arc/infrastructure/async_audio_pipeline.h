@@ -1,13 +1,15 @@
-#ifndef SILENCE_ARC_INFRASTRUCTURE_ASYNC_AUDIO_PIPELINE_H_
-#define SILENCE_ARC_INFRASTRUCTURE_ASYNC_AUDIO_PIPELINE_H_
+#pragma once
 
 #include "silence_arc/domain/audio_pipeline.h"
+#include <string>
+#include <memory>
+#include <functional>
 #include <thread>
-#include <atomic>
 #include <mutex>
+#include <condition_variable>
+#include <vector>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
 
 class AsyncAudioPipeline : public domain::IAudioPipeline {
 public:
@@ -18,27 +20,23 @@ public:
     void Stop() override;
     bool IsRunning() const override { return is_running_; }
 
-    void SetProcessCallback(domain::IAudioPipeline::ProcessCallback callback) override;
+    void SetProcessCallback(std::function<void(const domain::AudioBuffer&, domain::AudioBuffer&)> callback);
 
-    // Simulation methods for testing
     void PushInput(const domain::AudioBuffer& buffer);
     bool PopOutput(domain::AudioBuffer& buffer);
 
 private:
-    void ThreadLoop();
+    void ProcessingLoop();
 
-    std::atomic<bool> is_running_{false};
-    std::thread worker_thread_;
-    domain::IAudioPipeline::ProcessCallback callback_;
-    mutable std::mutex callback_mutex_;
-
+    bool is_running_;
+    std::thread processing_thread_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    
+    std::function<void(const domain::AudioBuffer&, domain::AudioBuffer&)> callback_;
+    
     std::vector<domain::AudioBuffer> input_queue_;
     std::vector<domain::AudioBuffer> output_queue_;
-    mutable std::mutex queue_mutex_;
-    std::condition_variable cv_;
 };
 
-} // namespace infrastructure
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_INFRASTRUCTURE_ASYNC_AUDIO_PIPELINE_H_
+} // namespace sa::infrastructure

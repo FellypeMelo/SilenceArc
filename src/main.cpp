@@ -11,8 +11,10 @@
 #include <thread>
 #include <chrono>
 
+using namespace sa;
+
 int main() {
-    std::cout << "Starting Silence Arc..." << std::endl;
+    std::cout << "Starting Silence Arc (v2 Modular)..." << std::endl;
 
     // Initialize SYCL Acceleration (Arc GPU) for Telemetry
     if (sycl_init()) {
@@ -23,36 +25,36 @@ int main() {
         std::cout << "[WARN] Hardware Acceleration not available. Telemetry may be limited." << std::endl;
     }
 
-    silence_arc::infrastructure::UIManager ui;
+    infrastructure::UIManager ui;
     if (!ui.Init("Silence Arc", 400, 600)) {
         std::cerr << "Failed to initialize UI." << std::endl;
         return 1;
     }
 
-    silence_arc::infrastructure::SyclTelemetryProvider telemetry_provider;
+    infrastructure::SyclTelemetryProvider telemetry_provider;
 
-    // Use stable Rust DeepFilterAdapter
-    auto suppressor = std::make_unique<silence_arc::infrastructure::DeepFilterAdapter>();
-    std::cout << "[INFO] Using DeepFilterNet Rust Adapter." << std::endl;
-
+    // Resolve model path
     auto path = std::filesystem::current_path();
-    if (path.filename() == "build") {
-        path = path.parent_path();
-    }
+    if (path.filename() == "build") path = path.parent_path();
     auto model_path = path / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
+
+    // Use stable Rust DeepFilterAdapter via IAudioProcessor interface
+    std::unique_ptr<domain::IAudioProcessor> processor = std::make_unique<infrastructure::DeepFilterAdapter>(model_path.string());
     
-    if (!suppressor->Init(model_path.string())) {
-        std::cerr << "Failed to initialize suppressor implementation." << std::endl;
+    if (!processor->initialize()) {
+        std::cerr << "[ERROR] Failed to initialize audio processor." << std::endl;
+    } else {
+        std::cout << "[INFO] Audio Processor initialized: " << processor->get_device_name() << std::endl;
     }
 
-    silence_arc::infrastructure::MiniaudioDeviceManager::EnumerateDevices(ui.GetState());
+    infrastructure::MiniaudioDeviceManager::EnumerateDevices(ui.GetState());
 
-    silence_arc::domain::AudioStreamBuffer in_buffer;
-    silence_arc::domain::AudioStreamBuffer out_buffer;
-    size_t frame_size = suppressor->GetFrameLength();
+    domain::AudioStreamBuffer in_buffer;
+    domain::AudioStreamBuffer out_buffer;
+    size_t frame_size = processor->get_frame_size();
 
-    silence_arc::infrastructure::MiniaudioPipeline pipeline;
-    pipeline.SetProcessCallback([&](const silence_arc::domain::AudioBuffer& input, silence_arc::domain::AudioBuffer& output) {
+    infrastructure::MiniaudioPipeline pipeline;
+    pipeline.SetProcessCallback([&](const domain::AudioBuffer& input, domain::AudioBuffer& output) {
         auto start_time = std::chrono::steady_clock::now();
         
         in_buffer.Push(input.data.data(), input.data.size());
@@ -63,16 +65,14 @@ int main() {
             in_buffer.Pop(frame_in.data(), frame_size);
 
             if (ui.GetState().noise_suppression_enabled) {
-                // Set attention limit from UI
-                suppressor->SetAttenuationLimit(ui.GetState().suppression_limit_db);
-                suppressor->ProcessFrame(frame_in.data(), frame_out.data());
+                processor->set_attenuation_limit(ui.GetState().suppression_limit_db);
+                processor->process_frame(frame_in.data(), frame_out.data(), frame_size);
             } else {
                 frame_out = frame_in; // Pass-through
             }
             out_buffer.Push(frame_out.data(), frame_size);
         }
 
-        // Output exactly what miniaudio requested to prevent dropouts/desync
         size_t requested_size = output.data.size();
         size_t available_out = out_buffer.Available();
         size_t push_size = (requested_size < available_out) ? requested_size : available_out;
@@ -85,12 +85,8 @@ int main() {
         auto process_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         telemetry_provider.SetProcessingLatency(process_duration.count() / 1000.0f);
 
-        // Mock signal levels for now
         ui.UpdateSignalLevels(0.5f, 0.5f, ui.GetState().noise_suppression_enabled ? 10.0f : 0.0f);
     });
-
-    // Initial signal level update
-    ui.UpdateSignalLevels(0.0f, 0.0f, 0.0f);
 
     int current_input_idx = -1;
     int current_output_idx = -1;
@@ -98,41 +94,29 @@ int main() {
     // Main loop
     while (!ui.ShouldClose()) {
         ui.BeginFrame();
-        
         auto& state = ui.GetState();
 
-        // Detect and handle device changes
-        if (state.selected_input_device != current_input_idx || 
-            state.selected_output_device != current_output_idx) {
-            
+        if (state.selected_input_device != current_input_idx || state.selected_output_device != current_output_idx) {
             if (state.selected_input_device >= 0 && state.selected_output_device >= 0) {
-                std::cout << "Audio device change detected. Selected Input: " 
-                          << state.input_devices[state.selected_input_device].name 
-                          << ", Output: " << state.output_devices[state.selected_output_device].name << std::endl;
-                
-                pipeline.Stop(); // Explicitly stop before starting new devices
+                pipeline.Stop();
                 in_buffer.Reset();
                 out_buffer.Reset();
+                processor->reset();
 
-                if (pipeline.Start(std::to_string(state.selected_input_device), 
-                                   std::to_string(state.selected_output_device))) {
+                if (pipeline.Start(std::to_string(state.selected_input_device), std::to_string(state.selected_output_device))) {
                     current_input_idx = state.selected_input_device;
                     current_output_idx = state.selected_output_device;
                 }
             }
         }
 
-        // Update telemetry from live provider
         ui.UpdateTelemetry(telemetry_provider.GetLatestData());
-
         ui.Render();
         ui.EndFrame();
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
     pipeline.Stop();
     ui.Shutdown();
-
     return 0;
 }

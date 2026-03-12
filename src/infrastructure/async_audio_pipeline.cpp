@@ -1,88 +1,88 @@
 #include "silence_arc/infrastructure/async_audio_pipeline.h"
-#include <windows.h>
+#include <iostream>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
 
-AsyncAudioPipeline::AsyncAudioPipeline() {}
+AsyncAudioPipeline::AsyncAudioPipeline() : is_running_(false) {}
 
 AsyncAudioPipeline::~AsyncAudioPipeline() {
     Stop();
 }
 
 bool AsyncAudioPipeline::Start(const std::string& input_device_id, const std::string& output_device_id) {
-    if (is_running_) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (is_running_) return true;
+    
     is_running_ = true;
-    worker_thread_ = std::thread(&AsyncAudioPipeline::ThreadLoop, this);
-    
-    // Set high priority for the audio thread
-    HANDLE handle = reinterpret_cast<HANDLE>(worker_thread_.native_handle());
-    SetThreadPriority(handle, THREAD_PRIORITY_TIME_CRITICAL);
-    
+    processing_thread_ = std::thread(&AsyncAudioPipeline::ProcessingLoop, this);
     return true;
 }
 
 void AsyncAudioPipeline::Stop() {
-    is_running_ = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!is_running_) return;
+        is_running_ = false;
+    }
     cv_.notify_all();
-    if (worker_thread_.joinable()) {
-        worker_thread_.join();
+    if (processing_thread_.joinable()) {
+        processing_thread_.join();
     }
 }
 
-void AsyncAudioPipeline::SetProcessCallback(domain::IAudioPipeline::ProcessCallback callback) {
-    std::lock_guard<std::mutex> lock(callback_mutex_);
-    callback_ = callback;
+void AsyncAudioPipeline::SetProcessCallback(std::function<void(const domain::AudioBuffer&, domain::AudioBuffer&)> callback) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    callback_ = std::move(callback);
 }
 
 void AsyncAudioPipeline::PushInput(const domain::AudioBuffer& buffer) {
     {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
+        std::lock_guard<std::mutex> lock(mutex_);
         input_queue_.push_back(buffer);
     }
     cv_.notify_one();
 }
 
 bool AsyncAudioPipeline::PopOutput(domain::AudioBuffer& buffer) {
-    std::lock_guard<std::mutex> lock(queue_mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     if (output_queue_.empty()) return false;
-    buffer = output_queue_.front();
+    
+    buffer = std::move(output_queue_.front());
     output_queue_.erase(output_queue_.begin());
     return true;
 }
 
-void AsyncAudioPipeline::ThreadLoop() {
-    while (is_running_) {
+void AsyncAudioPipeline::ProcessingLoop() {
+    while (true) {
         domain::AudioBuffer input;
         {
-            std::unique_lock<std::mutex> lock(queue_mutex_);
+            std::unique_lock<std::mutex> lock(mutex_);
             cv_.wait(lock, [this] { return !is_running_ || !input_queue_.empty(); });
             
-            if (!is_running_) break;
+            if (!is_running_ && input_queue_.empty()) break;
             
-            input = input_queue_.front();
-            input_queue_.erase(input_queue_.begin());
-        }
-
-        domain::AudioBuffer output;
-        output.sample_rate = input.sample_rate;
-        output.data.resize(input.data.size());
-
-        {
-            std::lock_guard<std::mutex> lock(callback_mutex_);
-            if (callback_) {
-                callback_(input, output);
-            } else {
-                output.data = input.data; // Pass-through
+            if (!input_queue_.empty()) {
+                input = std::move(input_queue_.front());
+                input_queue_.erase(input_queue_.begin());
             }
         }
 
+        if (input.data.empty()) continue;
+
+        domain::AudioBuffer output;
+        output.sample_rate = input.sample_rate;
+        output.num_channels = input.num_channels;
+        output.data.resize(input.data.size(), 0.0f);
+
+        if (callback_) {
+            callback_(input, output);
+        }
+
         {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-            output_queue_.push_back(output);
+            std::lock_guard<std::mutex> lock(mutex_);
+            output_queue_.push_back(std::move(output));
         }
     }
 }
 
-} // namespace infrastructure
-} // namespace silence_arc
+} // namespace sa::infrastructure

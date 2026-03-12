@@ -1,30 +1,33 @@
-#ifndef SILENCE_ARC_INFRASTRUCTURE_DEEP_FILTER_ADAPTER_H_
-#define SILENCE_ARC_INFRASTRUCTURE_DEEP_FILTER_ADAPTER_H_
+#pragma once
 
-#include "silence_arc/domain/noise_suppressor.h"
+#include "silence_arc/domain/audio_processor.h"
 #include <string>
 #include <memory>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
 
-class DeepFilterAdapter : public domain::INoiseSuppressor {
+/**
+ * @brief Stable Rust-based adapter for DeepFilterNet3.
+ */
+class DeepFilterAdapter : public domain::IAudioProcessor {
 public:
-    DeepFilterAdapter();
+    DeepFilterAdapter(std::string model_path);
     ~DeepFilterAdapter() override;
 
-    bool Init(const std::string& model_path) override;
-    size_t GetFrameLength() const override;
-    float ProcessFrame(const float* input, float* output) override;
-    void SetAttenuationLimit(float limit_db) override;
-    void SetDeepFilteringEnabled(bool enabled) override;
+    // IAudioProcessor Implementation
+    bool initialize() override;
+    std::string get_device_name() const override;
+    void process_frame(const float* input, float* output, size_t size) override;
+    size_t get_frame_size() const override;
+    size_t get_latency() const override;
+    void set_deep_filtering_enabled(bool enabled) override;
+    void set_attenuation_limit(float limit_db) override;
+    void reset() override;
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::unique_ptr<Impl> m_impl;
+    std::string m_model_path;
 };
 
-} // namespace infrastructure
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_INFRASTRUCTURE_DEEP_FILTER_ADAPTER_H_
+} // namespace sa::infrastructure

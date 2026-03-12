@@ -8,66 +8,51 @@
 #include <optional>
 #include <vector>
 #include <complex>
-#include <memory>
-
-namespace sa::domain {
-    class INeuralEngine;
-}
+#include <mutex>
 
 namespace sa::infrastructure {
 
-class SYCLDSPCoordinator;
-
 /**
- * @brief SYCL implementation of IAudioProcessor optimized for Intel Arc (oneAPI).
- * Uses Unified Shared Memory (USM) for zero-copy performance.
+ * @brief Legacy SYCL Accelerator (Native Engine v1).
+ * Now being refactored to a telemetry wrapper and pass-through.
+ * NativeSyclEngine (v2) handles full inference.
  */
-class alignas(64) SYCLAccelerator : public domain::IAudioProcessor {
+class SYCLAccelerator : public domain::IAudioProcessor {
 public:
     SYCLAccelerator();
     ~SYCLAccelerator() override;
 
+    // IAudioProcessor Implementation
     bool initialize() override;
     std::string get_device_name() const override;
     void process_frame(const float* input, float* output, size_t size) override;
-    void set_deep_filtering_enabled(bool enabled) override { m_df_enabled = enabled; }
-    void reset();
+    size_t get_frame_size() const override;
+    size_t get_latency() const override;
+    void set_deep_filtering_enabled(bool enabled) override;
+    void set_attenuation_limit(float limit_db) override;
+    void reset() override;
 
-    // Internal SYCL/oneDNN objects (decoupled from domain)
-    sycl::queue& get_queue() { return *m_queue; }
-    dnnl::engine& get_dnnl_engine() { return *m_dnnl_engine; }
-    dnnl::stream& get_dnnl_stream() { return *m_dnnl_stream; }
+    // Telemetry access
+    float get_gpu_load();
+    float get_vram_usage();
 
 private:
-    std::optional<sycl::queue> m_queue;
-    std::string m_device_name;
+    void setup_kernels();
 
-    // oneDNN Engine and Stream
+    size_t m_fft_size = 960;
+    size_t m_hop_size = 480;
+    bool m_initialized = false;
+    bool m_df_enabled = true;
+    float m_attenuation_limit = 40.0f;
+
+    std::unique_ptr<sycl::queue> m_queue;
     std::unique_ptr<dnnl::engine> m_dnnl_engine;
     std::unique_ptr<dnnl::stream> m_dnnl_stream;
-
-    std::unique_ptr<domain::INeuralEngine> m_engine;
-    std::unique_ptr<SYCLDSPCoordinator> m_dsp;
-
-    // Constants for DeepFilterNet
-
-    const size_t m_fft_size = 960;
-    const size_t m_hop_size = 480;
-    const size_t m_freq_size = m_fft_size / 2 + 1;
-    const size_t m_df_order = 5;
-    const size_t m_nb_erb = 32;
-    const size_t m_nb_df = 96;
-
-    bool m_df_enabled = true;
-
-    // Tracking Statistics for Normalization
-    std::vector<float> m_erb_mean;
-    std::vector<float> m_erb_var;
-
-    void reset_stats();
-    void setup_kernels();
-    void cleanup();
 };
+
+// Global singleton access for C API
+extern std::unique_ptr<SYCLAccelerator> g_accelerator;
+extern std::mutex g_accel_mutex;
 
 } // namespace sa::infrastructure
 

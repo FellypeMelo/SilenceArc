@@ -1,31 +1,26 @@
-#ifndef SILENCE_ARC_DOMAIN_AUDIO_PIPELINE_H_
-#define SILENCE_ARC_DOMAIN_AUDIO_PIPELINE_H_
+#pragma once
 
 #include <vector>
-#include <functional>
 #include <string>
 
-namespace silence_arc {
-namespace domain {
+namespace sa::domain {
 
 struct AudioBuffer {
     std::vector<float> data;
-    size_t sample_rate = 48000;
+    size_t sample_rate;
+    size_t num_channels;
 };
 
+/**
+ * @brief Interface for audio I/O streaming systems (e.g. Miniaudio).
+ */
 class IAudioPipeline {
 public:
     virtual ~IAudioPipeline() = default;
 
-    virtual bool Start(const std::string& input_device_id = "", const std::string& output_device_id = "") = 0;
+    virtual bool Start(const std::string& input_device_id, const std::string& output_device_id) = 0;
     virtual void Stop() = 0;
     virtual bool IsRunning() const = 0;
-
-    using ProcessCallback = std::function<void(const AudioBuffer& input, AudioBuffer& output)>;
-    virtual void SetProcessCallback(ProcessCallback callback) = 0;
 };
 
-} // namespace domain
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_DOMAIN_AUDIO_PIPELINE_H_
+} // namespace sa::domain

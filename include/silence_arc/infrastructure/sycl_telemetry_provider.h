@@ -1,50 +1,33 @@
-#ifndef SILENCE_ARC_INFRASTRUCTURE_SYCL_TELEMETRY_PROVIDER_H_
-#define SILENCE_ARC_INFRASTRUCTURE_SYCL_TELEMETRY_PROVIDER_H_
+#pragma once
 
 #include "silence_arc/domain/telemetry_provider.h"
-#include <sycl/sycl.hpp>
-#include <level_zero/zes_api.h>
+#include "silence_arc/infrastructure/ui_manager.h"
+#include <string>
 #include <memory>
-#include <vector>
-#include <atomic>
-#include <thread>
 #include <mutex>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
 
+/**
+ * @brief Provides real-time GPU telemetry using Intel Level Zero Sysman.
+ */
 class SyclTelemetryProvider : public domain::ITelemetryProvider {
 public:
     SyclTelemetryProvider();
     ~SyclTelemetryProvider() override;
 
-    domain::TelemetryData GetLatestData() override;
-    void Update() override;
-
-    // Internal method to update latency from the engine
-    void SetProcessingLatency(float latency_ms);
+    TelemetryData GetLatestData();
+    
+    // Domain Interface
+    float get_gpu_load() override;
+    float get_vram_usage() override;
+    void SetProcessingLatency(float ms);
 
 private:
-    domain::TelemetryData data_;
-    std::mutex data_mutex_;
-    std::atomic<float> external_latency_ms_{0.0f};
-    
-    zes_device_handle_t hSysmanDevice = nullptr;
-    zes_engine_handle_t hEngineAll = nullptr;
-    zes_mem_handle_t hMainMemory = nullptr;
-    
-    zes_engine_stats_t last_engine_stats_ = {0};
-    uint64_t last_timestamp_ = 0;
-    bool sysman_initialized_ = false;
-
-    std::thread worker_thread_;
-    std::atomic<bool> run_polling_{false};
-
-    void InitializeSysman();
-    void PollingLoop();
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+    float m_latency_ms = 0.0f;
+    std::mutex m_mutex;
 };
 
-} // namespace infrastructure
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_INFRASTRUCTURE_SYCL_TELEMETRY_PROVIDER_H_
+} // namespace sa::infrastructure

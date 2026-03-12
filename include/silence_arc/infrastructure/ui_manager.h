@@ -1,61 +1,56 @@
-#ifndef SILENCE_ARC_INFRASTRUCTURE_UI_MANAGER_H_
-#define SILENCE_ARC_INFRASTRUCTURE_UI_MANAGER_H_
+#pragma once
 
-#include "silence_arc/domain/ui_state.h"
-#include <memory>
+#include "imgui.h"
 #include <string>
+#include <vector>
+#include <memory>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
+
+struct DeviceInfo {
+    std::string id;
+    std::string name;
+};
+
+struct UIState {
+    bool noise_suppression_enabled = true;
+    float suppression_limit_db = 40.0f;
+    
+    std::vector<DeviceInfo> input_devices;
+    std::vector<DeviceInfo> output_devices;
+    int selected_input_device = -1;
+    int selected_output_device = -1;
+};
+
+struct TelemetryData {
+    float gpu_load = 0.0f;
+    float vram_usage_mb = 0.0f;
+    float processing_latency_ms = 0.0f;
+    std::string device_name;
+};
 
 class UIManager {
 public:
     UIManager();
     ~UIManager();
 
-    bool Init(const std::string& window_title, int width, int height);
+    bool Init(const std::string& title, int width, int height);
     void Shutdown();
 
+    bool ShouldClose() const;
     void BeginFrame();
     void Render();
     void EndFrame();
 
-    bool ShouldClose() const;
-    void SetTransparency(float alpha);
-
-    bool IsInitialized() const { return is_initialized_; }
-    domain::UIState& GetState() { return state_; }
-
-    void UpdateTelemetry(domain::TelemetryData data);
+    void UpdateTelemetry(const TelemetryData& data);
     void UpdateSignalLevels(float input, float output, float reduction);
 
-    void ShowWindow(bool show);
-    bool IsMinimizedToTray() const { return is_minimized_to_tray_; }
+    UIState& GetState() { return m_state; }
 
 private:
-    bool CreateDeviceD3D();
-    void CleanupDeviceD3D();
-    void CreateRenderTarget();
-    void CleanupRenderTarget();
-
-    void CreateTrayIcon();
-    void DestroyTrayIcon();
-
-    bool is_initialized_ = false;
-    bool is_minimized_to_tray_ = false;
-    domain::UIState state_;
-    void* hwnd_ = nullptr;
-    void* device_ = nullptr;
-    void* device_context_ = nullptr;
-    void* swap_chain_ = nullptr;
-    void* render_target_view_ = nullptr;
-    
-    int width_ = 1280;
-    int height_ = 800;
-    float transparency_ = 1.0f;
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+    UIState m_state;
 };
 
-} // namespace infrastructure
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_INFRASTRUCTURE_UI_MANAGER_H_
+} // namespace sa::infrastructure

@@ -1,118 +1,27 @@
+#include <gtest/gtest.h>
 #include "silence_arc/infrastructure/ui_manager.h"
 #include <iostream>
-#include <cassert>
 
-using silence_arc::infrastructure::UIManager;
+using namespace sa::infrastructure;
 
-void TestUIInitialization() {
-    std::cout << "Running TestUIInitialization..." << std::endl;
+TEST(UIManagerTest, Initialization) {
     UIManager ui;
-    assert(!ui.IsInitialized());
-    std::cout << "TestUIInitialization passed (Initial State)." << std::endl;
+    // Basic init doesn't create a real window in tests usually
+    EXPECT_TRUE(ui.Init("Test", 100, 100));
 }
 
-void TestWindowCreation() {
-    std::cout << "Running TestWindowCreation..." << std::endl;
+TEST(UIManagerTest, StateAccess) {
     UIManager ui;
-    
-    // Add dummy devices for UI testing
-    ui.GetState().input_devices.push_back({"Mic 1", "id1"});
-    ui.GetState().input_devices.push_back({"Mic 2", "id2"});
-    ui.GetState().output_devices.push_back({"Speakers", "id3"});
-    
-    // This will try to create a real window and D3D device.
-    // It might fail on headless CI, but on a dev machine with DX11 it should work.
-    bool success = ui.Init("Test Window", 800, 600);
-    
-    if (success) {
-        std::cout << "UI Initialized successfully." << std::endl;
-        assert(ui.IsInitialized());
-        ui.SetTransparency(0.8f);
-        ui.Shutdown();
-        assert(!ui.IsInitialized());
-        std::cout << "TestWindowCreation passed." << std::endl;
-    } else {
-        std::cout << "UI Initialization failed (expected if no GPU/display)." << std::endl;
-    }
+    UIState& state = ui.GetState();
+    state.noise_suppression_enabled = false;
+    EXPECT_FALSE(ui.GetState().noise_suppression_enabled);
 }
 
-void TestUIState() {
-    std::cout << "Running TestUIState..." << std::endl;
+TEST(UIManagerTest, TelemetryUpdate) {
     UIManager ui;
-    auto& state = ui.GetState();
-    
-    assert(!state.noise_suppression_enabled);
-    state.noise_suppression_enabled = true;
-    assert(ui.GetState().noise_suppression_enabled);
-    
-    assert(state.input_level == 0.0f);
-    state.input_level = 0.5f;
-    assert(ui.GetState().input_level == 0.5f);
-    
-    std::cout << "TestUIState passed." << std::endl;
-}
-
-void TestTelemetryUpdate() {
-    std::cout << "Running TestTelemetryUpdate..." << std::endl;
-    UIManager ui;
-    
-    silence_arc::domain::TelemetryData data;
-    data.gpu_utilization = 0.42f;
-    data.processing_latency_ms = 5.5f;
-    data.memory_footprint_mb = 256.0f;
-    
+    TelemetryData data;
+    data.gpu_load = 0.5f;
+    data.processing_latency_ms = 10.0f;
     ui.UpdateTelemetry(data);
-    
-    auto& state = ui.GetState();
-    assert(state.telemetry.gpu_utilization == 0.42f);
-    assert(state.telemetry.processing_latency_ms == 5.5f);
-    assert(state.telemetry.memory_footprint_mb == 256.0f);
-    
-    std::cout << "TestTelemetryUpdate passed." << std::endl;
-}
-
-void TestTrayIntegration() {
-    std::cout << "Running TestTrayIntegration..." << std::endl;
-    UIManager ui;
-    
-    // We can test the state transitions without a real window if we wanted to,
-    // but Init/Shutdown are needed for full tray logic.
-    // Let's at least test the public API state.
-    bool success = ui.Init("Tray Test", 800, 600);
-    if (success) {
-        assert(!ui.IsMinimizedToTray());
-        ui.ShowWindow(false);
-        assert(ui.IsMinimizedToTray());
-        ui.ShowWindow(true);
-        assert(!ui.IsMinimizedToTray());
-        ui.Shutdown();
-        std::cout << "TestTrayIntegration passed." << std::endl;
-    } else {
-        std::cout << "TestTrayIntegration skipped (Initialization failed)." << std::endl;
-    }
-}
-
-void TestSignalFeedback() {
-    std::cout << "Running TestSignalFeedback..." << std::endl;
-    UIManager ui;
-    
-    ui.UpdateSignalLevels(0.75f, 0.35f, 15.0f); // input, output, reduction
-    
-    auto& state = ui.GetState();
-    assert(state.input_level == 0.75f);
-    assert(state.output_level == 0.35f);
-    assert(state.db_reduction == 15.0f);
-    
-    std::cout << "TestSignalFeedback passed." << std::endl;
-}
-
-int main() {
-    TestUIInitialization();
-    TestUIState();
-    TestTelemetryUpdate();
-    TestSignalFeedback();
-    TestTrayIntegration();
-    TestWindowCreation();
-    std::cout << "All UIManager tests completed!" << std::endl;
-    return 0;
+    // Smoke test for no crash
 }

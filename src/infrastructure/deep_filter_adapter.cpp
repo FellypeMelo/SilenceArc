@@ -2,67 +2,79 @@
 #include "deep_filter.h"
 #include <stdexcept>
 #include <filesystem>
+#include <iostream>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
 
 struct DeepFilterAdapter::Impl {
     DFState* state = nullptr;
     size_t frame_length = 0;
 };
 
-DeepFilterAdapter::DeepFilterAdapter() : impl_(std::make_unique<Impl>()) {}
+DeepFilterAdapter::DeepFilterAdapter(std::string model_path) 
+    : m_impl(std::make_unique<Impl>()), m_model_path(std::move(model_path)) {}
 
 DeepFilterAdapter::~DeepFilterAdapter() {
-    if (impl_->state) {
-        df_free(impl_->state);
+    if (m_impl->state) {
+        df_free(m_impl->state);
     }
 }
 
-bool DeepFilterAdapter::Init(const std::string& model_path) {
-    if (impl_->state) {
-        df_free(impl_->state);
-        impl_->state = nullptr;
+bool DeepFilterAdapter::initialize() {
+    if (m_impl->state) {
+        df_free(m_impl->state);
+        m_impl->state = nullptr;
     }
 
-    if (!std::filesystem::exists(model_path)) {
+    if (!std::filesystem::exists(m_model_path)) {
+        std::cerr << "[ERROR] DeepFilter model not found at: " << m_model_path << std::endl;
         return false;
     }
 
-    // Default attenuation limit 40.0 for better noise removal.
-    // Note: df_create might still panic if the file is not a valid model.
-    impl_->state = df_create(model_path.c_str(), 40.0f, nullptr);
-    if (!impl_->state) {
+    // Initialize with default attenuation limit 40.0 dB
+    m_impl->state = df_create(m_model_path.c_str(), 40.0f, nullptr);
+    if (!m_impl->state) {
+        std::cerr << "[ERROR] Failed to create DeepFilter state from model." << std::endl;
         return false;
     }
 
-    impl_->frame_length = df_get_frame_length(impl_->state);
+    m_impl->frame_length = df_get_frame_length(m_impl->state);
     return true;
 }
 
-size_t DeepFilterAdapter::GetFrameLength() const {
-    return impl_->frame_length;
+std::string DeepFilterAdapter::get_device_name() const {
+    return "CPU (DeepFilterNet Rust Runtime)";
 }
 
-float DeepFilterAdapter::ProcessFrame(const float* input, float* output) {
-    if (!impl_->state) {
-        return -100.0f; // Error code or default SNR
+void DeepFilterAdapter::process_frame(const float* input, float* output, size_t size) {
+    if (!m_impl->state || size != m_impl->frame_length) {
+        return;
     }
-    // We cast to float* because the C API expects a mutable pointer for the input 
-    // (though it's usually treated as const internally if not used for in-place)
-    // Looking at capi.rs: input: *mut c_float
-    return df_process_frame(impl_->state, const_cast<float*>(input), output);
+    df_process_frame(m_impl->state, const_cast<float*>(input), output);
 }
 
-void DeepFilterAdapter::SetAttenuationLimit(float limit_db) {
-    if (impl_->state) {
-        df_set_atten_lim(impl_->state, limit_db);
+size_t DeepFilterAdapter::get_frame_size() const {
+    return m_impl->frame_length;
+}
+
+size_t DeepFilterAdapter::get_latency() const {
+    // DeepFilterNet3 usually has a latency of 2 frames (lookahead)
+    return m_impl->frame_length * 2; 
+}
+
+void DeepFilterAdapter::set_deep_filtering_enabled(bool /*enabled*/) {
+    // Rust adapter handles this internally
+}
+
+void DeepFilterAdapter::set_attenuation_limit(float limit_db) {
+    if (m_impl->state) {
+        df_set_atten_lim(m_impl->state, limit_db);
     }
 }
 
-void DeepFilterAdapter::SetDeepFilteringEnabled(bool /*enabled*/) {
-    // Rust adapter handles DF path internally via model config
+void DeepFilterAdapter::reset() {
+    // DLL doesn't expose a reset, so we re-initialize the state
+    initialize();
 }
 
-} // namespace infrastructure
-} // namespace silence_arc
+} // namespace sa::infrastructure

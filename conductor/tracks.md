@@ -21,5 +21,10 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
+- [ ] **Track: Native SYCL Engine v2 & Project Refactor**
+  *Link: [./tracks/native-sycl-v2-refactor_20260312/](./tracks/native-sycl-v2-refactor_20260312/)*
+
+---
+
 - [x] **Track: Revert DeepFiltering to Rust Adapter**
   *Reverted native SYCL implementation due to audio artifacts and restored stable Rust integration.*

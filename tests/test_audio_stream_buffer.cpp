@@ -2,42 +2,33 @@
 #include "silence_arc/domain/audio_stream_buffer.h"
 #include <vector>
 
-namespace silence_arc {
-namespace testing {
+using namespace sa::domain;
 
-using namespace silence_arc::domain;
+TEST(AudioStreamBufferTest, BasicPushPop) {
+    AudioStreamBuffer buffer(10);
+    float input[5] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    float output[5] = {0.0f};
 
-TEST(AudioStreamBufferTest, PushAndPopCorrectSizes) {
-    AudioStreamBuffer buffer;
-    
+    buffer.Push(input, 5);
+    EXPECT_EQ(buffer.Available(), 5);
+
+    size_t popped = buffer.Pop(output, 5);
+    EXPECT_EQ(popped, 5);
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(output[i], input[i]);
+    }
     EXPECT_EQ(buffer.Available(), 0);
-
-    // Push 10 items
-    std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f};
-    buffer.Push(input.data(), 10);
-    EXPECT_EQ(buffer.Available(), 10);
-
-    // Pop 4 items
-    std::vector<float> out1(4, 0.0f);
-    buffer.Pop(out1.data(), 4);
-    EXPECT_EQ(buffer.Available(), 6);
-    EXPECT_FLOAT_EQ(out1[0], 1.0f);
-    EXPECT_FLOAT_EQ(out1[3], 4.0f);
-
-    // Push 3 more items
-    std::vector<float> input2 = {11.0f, 12.0f, 13.0f};
-    buffer.Push(input2.data(), 3);
-    EXPECT_EQ(buffer.Available(), 9);
-
-    // Pop the rest
-    std::vector<float> out2(9, 0.0f);
-    buffer.Pop(out2.data(), 9);
-    EXPECT_EQ(buffer.Available(), 0);
-    EXPECT_FLOAT_EQ(out2[0], 5.0f);
-    EXPECT_FLOAT_EQ(out2[5], 10.0f);
-    EXPECT_FLOAT_EQ(out2[6], 11.0f);
-    EXPECT_FLOAT_EQ(out2[8], 13.0f);
 }
 
-} // namespace testing
-} // namespace silence_arc
+TEST(AudioStreamBufferTest, OverflowHandling) {
+    AudioStreamBuffer buffer(5);
+    float input[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    
+    buffer.Push(input, 10);
+    EXPECT_EQ(buffer.Available(), 5); // Should only keep last 5
+    
+    float output[5];
+    buffer.Pop(output, 5);
+    EXPECT_EQ(output[0], 6.0f);
+    EXPECT_EQ(output[4], 10.0f);
+}

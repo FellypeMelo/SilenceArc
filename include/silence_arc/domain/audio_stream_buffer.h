@@ -1,60 +1,30 @@
-#ifndef SILENCE_ARC_DOMAIN_AUDIO_STREAM_BUFFER_H_
-#define SILENCE_ARC_DOMAIN_AUDIO_STREAM_BUFFER_H_
+#pragma once
 
 #include <vector>
-#include <cstdint>
+#include <mutex>
+#include <cstddef>
 
-namespace silence_arc {
-namespace domain {
+namespace sa::domain {
 
+/**
+ * @brief Circular buffer for thread-safe audio streaming between devices and processors.
+ */
 class AudioStreamBuffer {
 public:
-    AudioStreamBuffer() = default;
+    explicit AudioStreamBuffer(size_t capacity = 192000); // ~4 seconds at 48kHz
 
-    void Push(const float* data, size_t size) {
-        if (size == 0) return;
-        
-        // If read_index_ has advanced far enough, we can compact the buffer
-        // to avoid infinite growth
-        if (read_index_ > 48000) { // e.g. 1 second worth
-            buffer_.erase(buffer_.begin(), buffer_.begin() + read_index_);
-            read_index_ = 0;
-        }
-
-        buffer_.insert(buffer_.end(), data, data + size);
-    }
-
-    size_t Available() const {
-        if (read_index_ > buffer_.size()) return 0;
-        return buffer_.size() - read_index_;
-    }
-
-    void Pop(float* out_data, size_t size) {
-        size_t avail = Available();
-        size_t to_copy = (size < avail) ? size : avail;
-        
-        if (to_copy > 0) {
-            std::copy(buffer_.begin() + read_index_, buffer_.begin() + read_index_ + to_copy, out_data);
-            read_index_ += to_copy;
-        }
-        
-        // Zero-fill the rest if requested size > available
-        if (size > to_copy) {
-            std::fill(out_data + to_copy, out_data + size, 0.0f);
-        }
-    }
-
-    void Reset() {
-        buffer_.clear();
-        read_index_ = 0;
-    }
+    void Push(const float* data, size_t size);
+    size_t Pop(float* data, size_t size);
+    
+    size_t Available() const;
+    void Reset();
 
 private:
-    std::vector<float> buffer_;
-    size_t read_index_ = 0;
+    std::vector<float> m_buffer;
+    size_t m_head = 0;
+    size_t m_tail = 0;
+    size_t m_count = 0;
+    mutable std::mutex m_mutex;
 };
 
-} // namespace domain
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_DOMAIN_AUDIO_STREAM_BUFFER_H_
+} // namespace sa::domain

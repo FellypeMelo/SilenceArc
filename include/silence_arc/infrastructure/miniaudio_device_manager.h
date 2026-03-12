@@ -1,17 +1,14 @@
-#ifndef SILENCE_ARC_INFRASTRUCTURE_MINIAUDIO_DEVICE_MANAGER_H_
-#define SILENCE_ARC_INFRASTRUCTURE_MINIAUDIO_DEVICE_MANAGER_H_
+#pragma once
 
-#include "silence_arc/domain/ui_state.h"
+#include "silence_arc/infrastructure/ui_manager.h"
+#include <vector>
+#include <string>
 
-namespace silence_arc {
-namespace infrastructure {
+namespace sa::infrastructure {
 
 class MiniaudioDeviceManager {
 public:
-    static bool EnumerateDevices(domain::UIState& state);
+    static void EnumerateDevices(UIState& state);
 };
 
-} // namespace infrastructure
-} // namespace silence_arc
-
-#endif // SILENCE_ARC_INFRASTRUCTURE_MINIAUDIO_DEVICE_MANAGER_H_
+} // namespace sa::infrastructure
