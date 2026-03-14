@@ -1,48 +1,47 @@
-# SilenceArc: Technical Architecture
+# SilenceArc Architecture: DirectML Edition
 
-SilenceArc follows a modular, layer-based architecture designed for high-performance audio processing and low-latency GPU inference.
+> **Version:** 2.0.0 (DirectML Native)  
+> **Target Hardware:** Intel Arc GPUs (B-Series / Battlemage)  
+> **Platform:** Windows 11 (DirectX 12)
 
-## System Overview
+## 🏛️ High-Level Design
 
-The application is divided into three primary technological domains:
-1.  **C++ Host (Infrastructure & UI):** Manages Windows Audio APIs (WASAPI/ASIO), the GUI (Dear ImGui), and the implementation of the SYCL/oneDNN engine.
-2.  **Rust Core (DeepFilterNet):** Provides the perceptual model logic and weight management.
-3.  **SYCL/oneAPI Backend (GPU):** Executes the heavy neural network computations on the Intel Arc hardware.
+SilenceArc follows a decoupled, hybrid architecture designed for ultra-low latency audio processing.
 
-## Layered Architecture
+### 1. Audio Backbone (CPU)
+-   **Host:** C++ Process.
+-   **I/O:** `miniaudio` manages the capture/playback loop with 480-sample hop size.
+-   **Buffering:** `AudioStreamBuffer` provides a thread-safe ring buffer for jitter compensation.
 
-Following **Clean Architecture** principles, the code is organized into distinct layers:
+### 2. DSP Engine (CPU)
+-   **Analysis:** Optimized STFT using a pre-computed DFT basis and Vorbis window.
+-   **Bins:** Full 481-bin complex spectrum processing (0 to 24kHz).
+-   **Synthesis:** ISTFT with overlap-add reconstruction.
 
-### 1. Domain Layer (`include/silence_arc/domain/`)
--   **Neural Network Interface:** Defines the abstract contracts for inference.
--   **Audio Buffers:** Manages the circular buffers and frame-based audio streams.
--   **GPU Accelerator Base:** An abstract interface for hardware acceleration (allowing CPU fallbacks).
+### 3. Neural Engine (GPU via DirectML)
+-   **Runtime:** ONNX Runtime with `DmlExecutionProvider`.
+-   **Acceleration:** Utilizes Intel Arc XMX (Matrix Extensions) for tensor operations.
+-   **Components:**
+    -   `OnnxAdapter`: Manages sessions and GPU memory.
+    -   `FeatureExtractor`: Native C++ port of ERB filterbank and normalization.
+    -   `DirectMLAudioEngine`: Orchestrates the inference pipeline.
 
-### 2. Infrastructure Layer (`src/infrastructure/`)
--   **Miniaudio Pipeline:** Handles the real-time audio callback loop.
--   **DeepFilter Adapter:** The C-API bridge between the C++ host and the Rust model.
--   **SYCL Accelerator:** The concrete implementation of the GPU interface using the oneAPI stack.
--   **oneDNN Engine:** The core inference runner that maps model topology to GPU primitives.
+## 🔄 Data Flow
 
-### 3. Presentation Layer (`src/main.cpp` & `ui_manager.cpp`)
--   **UI Manager:** Handles the ImGui rendering and user interaction state.
--   **Telemetry:** Visualizes real-time GPU utilization, latency, and signal levels.
+1.  **Capture:** 480 samples captured via `miniaudio`.
+2.  **DSP Analysis:** Windowing and DFT conversion to 481 complex bins.
+3.  **Features:** `FeatureExtractor` computes 32 log-ERB bands and 96 complex features.
+4.  **Inference:**
+    -   **Encoder:** Processes features, generates 512-dim embedding.
+    -   **ERB Decoder:** Predicts 32-band spectral mask.
+    -   **DF Decoder:** Predicts 96 complex FIR coefficients.
+5.  **Enhancement:**
+    -   Apply mask to all frequency bins.
+    -   Apply Deep Filtering to the first 96 bins (low-frequency speech recovery).
+6.  **Synthesis:** ISTFT and Overlap-Add to restore time-domain audio.
 
-## Data Flow & Interop
+## 🛡️ Reliability & Performance
 
-```mermaid
-graph TD
-    A[Mic Input / WASAPI] --> B[Miniaudio Pipeline]
-    B --> C[Audio Stream Buffer]
-    C --> D[DeepFilter Adapter]
-    D -- C-API --> E[Rust libDF]
-    D -- Native Call --> F[SYCL/oneDNN Engine]
-    F -- USM Zero-Copy --> G[Intel Arc GPU]
-    G -- Results --> F
-    F --> H[Overlap-Add Synthesis]
-    H --> I[Output Buffer]
-    I --> J[Speaker Output]
-```
-
-## Bridging C++ and SYCL
-SilenceArc utilizes **Unified Shared Memory (USM)** to eliminate data copying overhead between the C++ application and the GPU. The `SYCLAccelerator` manages the device queue and memory allocations, providing a seamless execution context for the `OneDNNInferenceEngine`.
+-   **Deterministic Latency:** Real-time processing budget < 10ms (current: ~4ms).
+-   **Driver Stability:** Leverages the stable Windows DirectML driver stack.
+-   **Resource Efficiency:** Minimal VRAM footprint (< 128MB).

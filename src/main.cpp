@@ -1,9 +1,8 @@
 #include "silence_arc/infrastructure/ui_manager.h"
-#include "silence_arc/infrastructure/deep_filter_adapter.h"
+#include "silence_arc/infrastructure/directml_audio_engine.h"
 #include "silence_arc/infrastructure/miniaudio_pipeline.h"
 #include "silence_arc/infrastructure/miniaudio_device_manager.h"
-#include "silence_arc/infrastructure/sycl_accelerator.h"
-#include "silence_arc/infrastructure/sycl_telemetry_provider.h"
+#include "silence_arc/infrastructure/directml_telemetry_provider.h"
 #include "silence_arc/domain/audio_stream_buffer.h"
 #include <iostream>
 #include <filesystem>
@@ -14,16 +13,10 @@
 using namespace sa;
 
 int main() {
-    std::cout << "Starting Silence Arc (v2 Modular)..." << std::endl;
+    std::cout << "Starting Silence Arc (DirectML Edition)..." << std::endl;
 
-    // Initialize SYCL Acceleration (Arc GPU) for Telemetry
-    if (sycl_init()) {
-        char dev_name[256];
-        sycl_get_device_name(dev_name, 256);
-        std::cout << "[SUCCESS] Hardware Acceleration enabled on: " << dev_name << std::endl;
-    } else {
-        std::cout << "[WARN] Hardware Acceleration not available. Telemetry may be limited." << std::endl;
-    }
+    // DirectML Initialization Info
+    std::cout << "[INFO] Hardware Acceleration: DirectX 12 DirectML" << std::endl;
 
     infrastructure::UIManager ui;
     if (!ui.Init("Silence Arc", 400, 600)) {
@@ -31,18 +24,13 @@ int main() {
         return 1;
     }
 
-    infrastructure::SyclTelemetryProvider telemetry_provider;
+    infrastructure::DirectMLTelemetryProvider telemetry_provider;
 
-    // Resolve model path
-    auto path = std::filesystem::current_path();
-    if (path.filename() == "build") path = path.parent_path();
-    auto model_path = path / "DeepFilterNet" / "models" / "DeepFilterNet3_onnx.tar.gz";
-
-    // Use stable Rust DeepFilterAdapter via IAudioProcessor interface
-    std::unique_ptr<domain::IAudioProcessor> processor = std::make_unique<infrastructure::DeepFilterAdapter>(model_path.string());
+    // Use DirectML Audio Engine via IAudioProcessor interface
+    std::unique_ptr<domain::IAudioProcessor> processor(new infrastructure::directml_impl::DirectMLAudioEngine());
     
     if (!processor->initialize()) {
-        std::cerr << "[ERROR] Failed to initialize audio processor." << std::endl;
+        std::cerr << "[ERROR] Failed to initialize DirectML Audio Processor." << std::endl;
     } else {
         std::cout << "[INFO] Audio Processor initialized: " << processor->get_device_name() << std::endl;
     }

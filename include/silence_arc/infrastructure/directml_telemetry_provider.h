@@ -9,16 +9,14 @@
 namespace sa::infrastructure {
 
 /**
- * @brief Provides real-time GPU telemetry using Intel Level Zero Sysman.
+ * @brief Telemetry provider for DirectML/ONNX Runtime.
  */
-class SyclTelemetryProvider : public domain::ITelemetryProvider {
+class DirectMLTelemetryProvider : public domain::ITelemetryProvider {
 public:
-    SyclTelemetryProvider();
-    ~SyclTelemetryProvider() override;
+    DirectMLTelemetryProvider();
+    virtual ~DirectMLTelemetryProvider();
 
     TelemetryData GetLatestData();
-    
-    // Domain Interface
     float get_gpu_load() override;
     float get_vram_usage() override;
     void SetProcessingLatency(float ms);

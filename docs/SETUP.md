@@ -1,53 +1,47 @@
-# SilenceArc: Setup & Build Guide
+# SilenceArc Setup Guide (DirectML)
 
-Follow these steps to configure your environment and build SilenceArc for Intel Arc GPUs.
+Follow these steps to set up the SilenceArc development environment on Windows 11.
 
-## Prerequisites
+## 🛠️ Prerequisites
 
-### 1. Intel oneAPI Base Toolkit
-You must have the **Intel oneAPI Base Toolkit** installed (version 2024.0 or newer).
--   **Compiler:** `icx` (Intel LLVM C++ Compiler) is required for `-fsycl` support.
--   **Libraries:** oneDNN and oneMKL must be included in your installation.
+-   **GPU:** Intel Arc B-Series or any DX12 compatible GPU.
+-   **OS:** Windows 10/11 64-bit.
+-   **Compiler:** Intel oneAPI ICX or MSVC 2022.
+-   **CMake:** Version 3.20 or higher.
 
-### 2. CMake
-Version 3.20 or newer is required.
+## 📥 Environment Setup
 
-### 3. Rust (For DeepFilterNet Core)
-If you plan to modify the model logic, you will need the Rust toolchain installed. The project uses a pre-compiled `df.dll` for standard builds.
+1.  **Download ONNX Runtime:**
+    The project uses ONNX Runtime with DirectML. Run the provided script to download the necessary binaries:
+    ```powershell
+    .\download_onnxruntime.ps1
+    ```
 
-## Environment Configuration
+2.  **Initialize Environment:**
+    Run the setup script to configure path variables and verify dependencies:
+    ```cmd
+    setup_environment.bat
+    ```
 
-Before building or running the application, you must initialize the oneAPI environment variables. This project provides a helper script:
+## 🏗️ Building the Project
 
-```powershell
-# In a PowerShell or CMD window:
-.\setup_intel.bat
+Run the build script to compile the application and tests:
+```cmd
+build_project.bat
 ```
 
-This script invokes Intel's `setvars.bat` and configures the environment for the `icx` compiler and required libraries.
+## ✅ Verification
 
-## Building the Project
-
-SilenceArc uses CMake for project management. We recommend using the **Ninja** generator for faster builds.
-
-```bash
-# 1. Create a build directory
-mkdir build
-cd build
-
-# 2. Configure with Intel LLVM Compiler
-cmake -G "Ninja" -DCMAKE_CXX_COMPILER=icx -DCMAKE_C_COMPILER=icx ..
-
-# 3. Build the application
-cmake --build . --config Release
+To verify that DirectML is working correctly on your GPU, run the neural path test:
+```cmd
+build\test_neural_path.exe
 ```
+You should see: `[SUCCESS] DirectML Engine active on GPU.`
 
-## Runtime Dependencies
-Ensure that `df.dll` (from the DeepFilterNet target directory) is located in the same folder as `silence_arc.exe` or available in your system path.
+## 🚀 Running the App
 
-## Verification
-Run the following command to verify your GPU is correctly detected and the kernels are functional:
-```bash
-.\build\test_nn_layers.exe
+Execute the final binary:
+```cmd
+build\silence_arc.exe
 ```
-You should see a message: `[INFO] SYCL Initialized on: Intel(R) Arc(TM) ...`
+You can then select your input/output devices in the UI and toggle noise suppression.

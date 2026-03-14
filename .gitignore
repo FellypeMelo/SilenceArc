@@ -36,3 +36,9 @@ Thumbs.db
 # Logs and tests
 *.txt
 *.log
+
+# Large Runtimes and Models
+openvino_genai_windows_*/
+third_party/onnxruntime/
+models/onnx/
+imgui.ini
