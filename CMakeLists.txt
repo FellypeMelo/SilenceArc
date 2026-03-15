@@ -67,18 +67,19 @@ add_library(silence_arc_infra STATIC
     src/domain/audio_stream_buffer.cpp
     src/infrastructure/cpu_dsp_engine.cpp
     src/infrastructure/directml_audio_engine.cpp
-)
-target_link_libraries(silence_arc_infra PUBLIC 
-    imgui 
+    src/infrastructure/sycl_kernels.cpp
+    )
+    target_link_libraries(silence_arc_infra PUBLIC
+    imgui
     df_shared 
-    nlohmann_json::nlohmann_json 
+    nlohmann_json::nlohmann_json
     onnxruntime
-)
+    )
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(silence_arc_infra PUBLIC /EHsc --target=x86_64-pc-windows-msvc -Wno-ignored-attributes)
-endif()
-
+    if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+    target_compile_options(silence_arc_infra PUBLIC /EHsc -fsycl --target=x86_64-pc-windows-msvc -Wno-ignored-attributes)
+    target_link_options(silence_arc_infra PUBLIC -fsycl)
+    endif()
 # UI Manager Test
 add_executable(test_ui_manager tests/test_ui_manager.cpp)
 target_link_libraries(test_ui_manager PRIVATE GTest::gtest_main silence_arc_infra)

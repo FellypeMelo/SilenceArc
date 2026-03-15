@@ -1,6 +1,7 @@
 #include "silence_arc/infrastructure/directml_audio_engine.h"
 #include "silence_arc/infrastructure/onnx_adapter.h"
 #include "silence_arc/infrastructure/cpu_dsp_engine.h"
+#include "silence_arc/infrastructure/sycl_kernels.h"
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
@@ -8,13 +9,16 @@
 
 namespace sa::infrastructure::directml_impl {
 
-DirectMLAudioEngine::DirectMLAudioEngine() : m_initialized(false), m_df_enabled(true) {}
+DirectMLAudioEngine::DirectMLAudioEngine() : m_initialized(false), m_df_enabled(true) {
+    m_sycl = std::make_unique<sycl_impl::SyclKernels>();
+}
 
 DirectMLAudioEngine::~DirectMLAudioEngine() {
     m_enc_onnx.reset();
     m_erb_dec_onnx.reset();
     m_df_dec_onnx.reset();
     m_dsp.reset();
+    m_sycl.reset();
 }
 
 bool DirectMLAudioEngine::initialize() {
@@ -50,6 +54,13 @@ bool DirectMLAudioEngine::initialize() {
         // 5. Initialize history for DF (order 5) - FIXED to 481
         m_spec_history.assign(5, std::vector<std::complex<float>>(481, 0.0f));
         m_history_idx = 0;
+
+        // 6. SYCL Low-Level Optimization (Optional)
+        if (m_sycl->initialize()) {
+            std::cout << "[INFO] SYCL Low-Level Optimizations enabled." << std::endl;
+        } else {
+            std::cout << "[INFO] SYCL not available, using CPU fallback for DSP kernels." << std::endl;
+        }
         
         m_initialized = true;
         std::cout << "[SUCCESS] DirectML Engine active on GPU." << std::endl;
@@ -61,7 +72,7 @@ bool DirectMLAudioEngine::initialize() {
 }
 
 std::string DirectMLAudioEngine::get_device_name() const {
-    return "Intel Arc B580 (DirectML)";
+    return "Intel Arc B580 (DirectML + SYCL Opts)";
 }
 
 void DirectMLAudioEngine::build_onnx_sessions() {
@@ -131,12 +142,23 @@ void DirectMLAudioEngine::process_frame(const float* input, float* output, size_
 
     // 4.1 Apply ERB Mask
     std::vector<std::complex<float>> spec_masked = noisy_delayed;
-    apply_mask(spec_masked.data(), m_erb_mask.data());
+    
+    // Use SYCL if available for low-level ops
+    if (m_sycl->initialize()) {
+        m_sycl->apply_mask(spec_masked.data(), m_erb_mask.data(), m_features->get_erb_bins(), m_attenuation_limit);
+    } else {
+        apply_mask(spec_masked.data(), m_erb_mask.data());
+    }
 
     // 4.2 Apply DF to Low Frequencies
     if (m_df_enabled) {
         std::vector<std::complex<float>> spec_df(96);
-        compute_df_block(spec_df.data(), m_df_coeffs.data());
+        
+        if (m_sycl->initialize()) {
+            m_sycl->compute_df_block(spec_df.data(), m_df_coeffs.data(), m_spec_history, lookahead_idx);
+        } else {
+            compute_df_block(spec_df.data(), m_df_coeffs.data());
+        }
         
         std::copy(spec_df.begin(), spec_df.end(), enhanced_spec.begin());
         std::copy(spec_masked.begin() + 96, spec_masked.end(), enhanced_spec.begin() + 96);

@@ -8,6 +8,10 @@
 #include <vector>
 #include <deque>
 
+namespace sa::infrastructure {
+    namespace sycl_impl { class SyclKernels; }
+}
+
 namespace sa::infrastructure::directml_impl {
 
 /**
@@ -43,6 +47,7 @@ private:
     // Core Resources (CPU-based DSP)
     std::unique_ptr<CpuDspEngine> m_dsp;
     std::unique_ptr<FeatureExtractor> m_features;
+    std::unique_ptr<sycl_impl::SyclKernels> m_sycl;
 
     // State
     bool m_initialized = false;
