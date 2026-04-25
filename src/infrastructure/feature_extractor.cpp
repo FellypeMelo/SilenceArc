@@ -92,38 +92,34 @@ void FeatureExtractor::compute_feat_erb(const std::complex<float>* spec, float* 
             float mag_sq = std::norm(spec[spec_idx++]);
             band_energy += mag_sq;
         }
-        band_energy /= band_size;
-        
-        float log_erb = std::log10(band_energy + 1e-10f) * 10.0f;
-        
-        // Exponential mean normalization with slow alpha
-        m_mean_norm_state[b] = log_erb * (1.0f - m_alpha_mean) + m_mean_norm_state[b] * m_alpha_mean;
-        feat_erb_out[b] = (log_erb - m_mean_norm_state[b]) / 40.0f;
+        band_energy /= (float)band_size;
+
+        // Convert to dB-like scale
+        float log_erb = 10.0f * std::log10(band_energy + 1e-10f);
+
+        // Slow exponential moving average for mean normalization
+        m_mean_norm_state[b] = (0.95f * m_mean_norm_state[b]) + (0.05f * log_erb);
+
+        // DeepFilterNet3 typically expects features around -1.0 to 1.0 range.
+        // We'll use a more standard 20dB range for the denominator.
+        feat_erb_out[b] = (log_erb - m_mean_norm_state[b]) / 20.0f;
     }
 }
 
 void FeatureExtractor::compute_feat_spec(const std::complex<float>* spec, float* feat_spec_out) {
-    size_t nb_df = 96; 
+    size_t nb_df = 96;
     float* out_re = feat_spec_out;
     float* out_im = feat_spec_out + nb_df;
 
-    // 1. Compute total energy of the DF bins for global normalization
-    float frame_energy = 0.0f;
     for (size_t i = 0; i < nb_df; ++i) {
-        frame_energy += std::norm(spec[i]);
-    }
-    frame_energy /= nb_df;
+        float mag_sq = std::norm(spec[i]);
+        // Per-bin unit normalization for the complex spectrum features
+        m_unit_norm_state[i] = (0.95f * m_unit_norm_state[i]) + (0.05f * mag_sq);
 
-    // 2. Update global unit norm state using the first bin's tracker
-    m_unit_norm_state[0] = frame_energy * (1.0f - m_alpha_unit) + m_unit_norm_state[0] * m_alpha_unit;
-    
-    float scale = 1.0f / std::sqrt(m_unit_norm_state[0] + 1e-10f);
+        float scale = 1.0f / std::sqrt(m_unit_norm_state[i] + 1e-10f);
 
-    // 3. Apply the same scale to all bins to preserve spectral shape (prevents robotic sound)
-    for (size_t i = 0; i < nb_df; ++i) {
         out_re[i] = spec[i].real() * scale;
         out_im[i] = spec[i].imag() * scale;
     }
 }
-
 } // namespace sa::infrastructure::directml_impl

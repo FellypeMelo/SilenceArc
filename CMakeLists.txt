@@ -67,7 +67,7 @@ add_library(silence_arc_infra STATIC
     src/domain/audio_stream_buffer.cpp
     src/infrastructure/cpu_dsp_engine.cpp
     src/infrastructure/directml_audio_engine.cpp
-    src/infrastructure/sycl_kernels.cpp
+    
     )
     target_link_libraries(silence_arc_infra PUBLIC
     imgui
@@ -77,8 +77,8 @@ add_library(silence_arc_infra STATIC
     )
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-    target_compile_options(silence_arc_infra PUBLIC /EHsc -fsycl --target=x86_64-pc-windows-msvc -Wno-ignored-attributes)
-    target_link_options(silence_arc_infra PUBLIC -fsycl)
+    target_compile_options(silence_arc_infra PUBLIC /EHsc  --target=x86_64-pc-windows-msvc -Wno-ignored-attributes)
+    target_link_options(silence_arc_infra PUBLIC )
     endif()
 # UI Manager Test
 add_executable(test_ui_manager tests/test_ui_manager.cpp)

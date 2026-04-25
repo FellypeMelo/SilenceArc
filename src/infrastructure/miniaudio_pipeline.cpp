@@ -42,14 +42,16 @@ bool MiniaudioPipeline::Start(const std::string& input_device_id, const std::str
 
     ma_device_config config = ma_device_config_init(ma_device_type_duplex);
     config.playback.format   = ma_format_f32;
-    config.playback.channels = 1; // Forced mono for DeepFilter
+    config.playback.channels = 1; 
     config.capture.format    = ma_format_f32;
     config.capture.channels  = 1;
     config.sampleRate        = 48000;
     config.dataCallback      = ma_callback;
     config.pUserData         = m_impl.get();
-
-    // Map device IDs (simplified for default for now)
+    
+    // Increase buffer size to 100ms for extreme stability
+    config.periodSizeInFrames = 480; // 10ms per period
+    config.periods = 10;            // 10 periods = 100ms total hardware buffer
     if (ma_device_init(NULL, &config, &m_impl->device) != MA_SUCCESS) {
         return false;
     }

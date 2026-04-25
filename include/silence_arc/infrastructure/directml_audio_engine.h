@@ -8,10 +8,6 @@
 #include <vector>
 #include <deque>
 
-namespace sa::infrastructure {
-    namespace sycl_impl { class SyclKernels; }
-}
-
 namespace sa::infrastructure::directml_impl {
 
 /**
@@ -36,9 +32,9 @@ public:
 private:
     void build_onnx_sessions();
     void apply_mask(std::complex<float>* spec, const float* mask);
-    void compute_df_block(std::complex<float>* spec_df_out, const float* df_coeffs);
+    void compute_df_block(std::complex<float>* spec_df_out, const float* df_coeffs, size_t ref_idx);
     void apply_post_filter(std::complex<float>* enhanced, const std::complex<float>* noisy);
-    
+
     // ONNX Adapters
     std::unique_ptr<OnnxAdapter> m_enc_onnx;
     std::unique_ptr<OnnxAdapter> m_erb_dec_onnx;
@@ -47,7 +43,6 @@ private:
     // Core Resources (CPU-based DSP)
     std::unique_ptr<CpuDspEngine> m_dsp;
     std::unique_ptr<FeatureExtractor> m_features;
-    std::unique_ptr<sycl_impl::SyclKernels> m_sycl;
 
     // State
     bool m_initialized = false;
@@ -62,11 +57,13 @@ private:
     std::vector<float> m_feat_erb;
     std::vector<float> m_feat_spec;
     std::vector<float> m_erb_mask;
+    std::vector<float> m_prev_erb_mask;
     std::vector<float> m_df_coeffs;
-    
+
     // Intermediate ONNX outputs
     std::vector<float> m_emb;
     std::vector<float> m_e0, m_e1, m_e2, m_e3, m_c0;
 };
 
 } // namespace sa::infrastructure::directml_impl
+

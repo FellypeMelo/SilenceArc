@@ -1,7 +1,6 @@
 #include "silence_arc/infrastructure/directml_audio_engine.h"
 #include "silence_arc/infrastructure/onnx_adapter.h"
 #include "silence_arc/infrastructure/cpu_dsp_engine.h"
-#include "silence_arc/infrastructure/sycl_kernels.h"
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
@@ -10,7 +9,6 @@
 namespace sa::infrastructure::directml_impl {
 
 DirectMLAudioEngine::DirectMLAudioEngine() : m_initialized(false), m_df_enabled(true) {
-    m_sycl = std::make_unique<sycl_impl::SyclKernels>();
 }
 
 DirectMLAudioEngine::~DirectMLAudioEngine() {
@@ -18,14 +16,13 @@ DirectMLAudioEngine::~DirectMLAudioEngine() {
     m_erb_dec_onnx.reset();
     m_df_dec_onnx.reset();
     m_dsp.reset();
-    m_sycl.reset();
 }
 
 bool DirectMLAudioEngine::initialize() {
     if (m_initialized) return true;
 
     std::cout << "[INFO] Initializing DirectML Engine (481 Bins Mode)..." << std::endl;
-    
+
     try {
         // 1. DSP Engine - 481 bins (Nyquist inclusive)
         m_dsp = std::make_unique<CpuDspEngine>(960, 480);
@@ -42,8 +39,9 @@ bool DirectMLAudioEngine::initialize() {
         m_feat_erb.resize(32);
         m_feat_spec.resize(96 * 2); // Neural path only uses 96 complex bins
         m_erb_mask.resize(32);
+        m_prev_erb_mask.assign(32, 1.0f);
         m_df_coeffs.resize(96 * 5 * 2);
-        
+
         m_emb.resize(512);
         m_e0.resize(m_enc_onnx->get_output_size("e0"));
         m_e1.resize(m_enc_onnx->get_output_size("e1"));
@@ -51,17 +49,10 @@ bool DirectMLAudioEngine::initialize() {
         m_e3.resize(m_enc_onnx->get_output_size("e3"));
         m_c0.resize(m_enc_onnx->get_output_size("c0"));
 
-        // 5. Initialize history for DF (order 5) - FIXED to 481
-        m_spec_history.assign(5, std::vector<std::complex<float>>(481, 0.0f));
+        // 5. Initialize history for DF (order 5 + lookahead) - Expanded to 100
+        m_spec_history.assign(100, std::vector<std::complex<float>>(481, 0.0f));
         m_history_idx = 0;
 
-        // 6. SYCL Low-Level Optimization (Optional)
-        if (m_sycl->initialize()) {
-            std::cout << "[INFO] SYCL Low-Level Optimizations enabled." << std::endl;
-        } else {
-            std::cout << "[INFO] SYCL not available, using CPU fallback for DSP kernels." << std::endl;
-        }
-        
         m_initialized = true;
         std::cout << "[SUCCESS] DirectML Engine active on GPU." << std::endl;
         return true;
@@ -72,7 +63,7 @@ bool DirectMLAudioEngine::initialize() {
 }
 
 std::string DirectMLAudioEngine::get_device_name() const {
-    return "Intel Arc B580 (DirectML + SYCL Opts)";
+    return "Intel Arc B580 (DirectML Acceleration)";
 }
 
 void DirectMLAudioEngine::build_onnx_sessions() {
@@ -96,15 +87,15 @@ void DirectMLAudioEngine::build_onnx_sessions() {
 
 void DirectMLAudioEngine::process_frame(const float* input, float* output, size_t size) {
     if (!m_initialized || size != 480) return;
-    
-    // 1. STFT Analysis (CPU) - Corrected to 481
+
+    // 1. STFT Analysis (CPU)
     std::vector<std::complex<float>> spec_t(481);
     m_dsp->analyze(input, spec_t.data());
 
-    // Update history
+    // Update history (Buffer of 100)
     m_spec_history[m_history_idx] = spec_t;
 
-    // 2. Feature Extraction (Uses current frame)
+    // 2. Feature Extraction (Uses current frame t)
     m_features->compute_feat_erb(spec_t.data(), m_feat_erb.data());
     m_features->compute_feat_spec(spec_t.data(), m_feat_spec.data());
 
@@ -112,7 +103,7 @@ void DirectMLAudioEngine::process_frame(const float* input, float* output, size_
     m_enc_onnx->set_input("feat_erb", m_feat_erb.data(), {1, 1, 1, 32});
     m_enc_onnx->set_input("feat_spec", m_feat_spec.data(), {1, 2, 1, 96});
     m_enc_onnx->run();
-    
+
     m_enc_onnx->get_output("emb", m_emb.data(), m_emb.size());
     m_enc_onnx->get_output("e0", m_e0.data(), m_e0.size());
     m_enc_onnx->get_output("e1", m_e1.data(), m_e1.size());
@@ -135,32 +126,23 @@ void DirectMLAudioEngine::process_frame(const float* input, float* output, size_
         m_df_dec_onnx->get_output("coefs", m_df_coeffs.data(), 96 * 5 * 2);
     }
 
-    // 4. Enhancement (Applied to frame t - lookahead)
-    size_t lookahead_idx = (m_history_idx + 3) % 5;
-    std::vector<std::complex<float>> noisy_delayed = m_spec_history[lookahead_idx];
+    // 4. Enhancement (Applied to frame t-2 due to lookahead)
+    size_t lookahead_idx = (m_history_idx + 98) % 100;
     std::vector<std::complex<float>> enhanced_spec(481);
 
-    // 4.1 Apply ERB Mask
-    std::vector<std::complex<float>> spec_masked = noisy_delayed;
-    
-    // Use SYCL if available for low-level ops
-    if (m_sycl->initialize()) {
-        m_sycl->apply_mask(spec_masked.data(), m_erb_mask.data(), m_features->get_erb_bins(), m_attenuation_limit);
-    } else {
-        apply_mask(spec_masked.data(), m_erb_mask.data());
-    }
+    // 4.1 Apply ERB Mask to delayed frame
+    std::vector<std::complex<float>> spec_masked = m_spec_history[lookahead_idx];
+    apply_mask(spec_masked.data(), m_erb_mask.data());
 
     // 4.2 Apply DF to Low Frequencies
     if (m_df_enabled) {
         std::vector<std::complex<float>> spec_df(96);
-        
-        if (m_sycl->initialize()) {
-            m_sycl->compute_df_block(spec_df.data(), m_df_coeffs.data(), m_spec_history, lookahead_idx);
-        } else {
-            compute_df_block(spec_df.data(), m_df_coeffs.data());
+        compute_df_block(spec_df.data(), m_df_coeffs.data(), lookahead_idx);
+
+        // 50/50 Blend as requested for better noise suppression while keeping quality
+        for (size_t i = 0; i < 96; ++i) {
+            enhanced_spec[i] = 0.5f * spec_df[i] + 0.5f * spec_masked[i];
         }
-        
-        std::copy(spec_df.begin(), spec_df.end(), enhanced_spec.begin());
         std::copy(spec_masked.begin() + 96, spec_masked.end(), enhanced_spec.begin() + 96);
     } else {
         enhanced_spec = spec_masked;
@@ -169,16 +151,27 @@ void DirectMLAudioEngine::process_frame(const float* input, float* output, size_
     // 5. ISTFT Synthesis (CPU)
     m_dsp->synthesize(enhanced_spec.data(), output);
 
-    m_history_idx = (m_history_idx + 1) % 5;
+    m_history_idx = (m_history_idx + 1) % 100;
 }
 
 void DirectMLAudioEngine::apply_mask(std::complex<float>* spec, const float* mask) {
     const auto& erb_bins = m_features->get_erb_bins();
     size_t spec_idx = 0;
     
+    // More responsive smoothing (0.8) to catch sudden noises
+    const float alpha = 0.8f;
+    float effective_limit = std::min(m_attenuation_limit, 45.0f); // Allow up to 45dB
+    float min_gain = std::pow(10.0f, -effective_limit / 20.0f);
+
     for (size_t b = 0; b < 32; ++b) {
-        float gain = std::clamp(mask[b], 0.0f, 1.0f);
-        float min_gain = std::pow(10.0f, -m_attenuation_limit / 20.0f);
+        float raw_gain = std::clamp(mask[b], 0.0f, 1.0f);
+        
+        // Reduced voice floor from 0.05 to 0.01 to allow more noise removal
+        raw_gain = 0.01f + 0.99f * raw_gain; 
+
+        float gain = (alpha * raw_gain) + ((1.0f - alpha) * m_prev_erb_mask[b]);
+        m_prev_erb_mask[b] = gain;
+
         gain = std::max(gain, min_gain);
         
         for (size_t i = 0; i < erb_bins[b]; ++i) {
@@ -189,14 +182,22 @@ void DirectMLAudioEngine::apply_mask(std::complex<float>* spec, const float* mas
     }
 }
 
-void DirectMLAudioEngine::compute_df_block(std::complex<float>* spec_df_out, const float* df_coeffs) {
-    for (size_t k = 0; k < 96; ++k) {
+void DirectMLAudioEngine::compute_df_block(std::complex<float>* spec_df_out, const float* df_coeffs, size_t ref_idx) {
+    const size_t num_bins = 96;
+    const size_t order = 5;
+    const size_t imag_offset = order * num_bins;
+
+    for (size_t k = 0; k < num_bins; ++k) {
         std::complex<float> sum(0, 0);
-        for (size_t i = 0; i < 5; ++i) {
-            size_t h_idx = (m_history_idx + 5 - i) % 5;
+        for (size_t i = 0; i < order; ++i) {
+            // coefs are [Complex, Order, Bins]
+            size_t idx = i * num_bins + k;
+            std::complex<float> coeff(df_coeffs[idx], df_coeffs[imag_offset + idx]);
+            
+            size_t h_idx = (ref_idx + 100 - i) % 100;
             std::complex<float> sample = m_spec_history[h_idx][k];
-            size_t c_base = (k * 10) + (i * 2); 
-            sum += std::complex<float>(df_coeffs[c_base], df_coeffs[c_base + 1]) * sample;
+            
+            sum += coeff * sample;
         }
         spec_df_out[k] = sum;
     }
@@ -204,7 +205,8 @@ void DirectMLAudioEngine::compute_df_block(std::complex<float>* spec_df_out, con
 
 void DirectMLAudioEngine::reset() {
     if (m_dsp) m_dsp->initialize();
-    m_spec_history.assign(5, std::vector<std::complex<float>>(481, 0.0f));
+    m_spec_history.assign(100, std::vector<std::complex<float>>(481, 0.0f));
+    m_prev_erb_mask.assign(32, 1.0f);
     m_history_idx = 0;
 }
 
