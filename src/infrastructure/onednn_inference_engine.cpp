@@ -4,8 +4,9 @@
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
+#include <cstring>
 
-namespace sa::infrastructure {
+namespace silence_arc::infrastructure {
 
 using json = nlohmann::json;
 using namespace dnnl;
@@ -203,7 +204,8 @@ void OneDNNInferenceEngine::add_sycl_reorder_nchw_to_tnc(std::vector<OneDNNLayer
                 out_ptr[out_idx] = in_ptr[in_idx];
             });
         });
-        q.wait_and_throw();
+        // No wait: this kernel is on the shared in-order queue, so the next
+        // layer (and the terminal output copy) chain after it automatically.
     };
     sequence.push_back(layer);
 }
@@ -231,7 +233,11 @@ void OneDNNInferenceEngine::add_gru(std::vector<OneDNNLayer>& sequence,
 
     memory::dims weights_layer_dims = {num_layers, 1, input_size, 3, hidden_size};
     memory::dims weights_iter_dims = {num_layers, 1, hidden_size, 3, hidden_size};
-    memory::dims bias_dims = {num_layers, 1, 3, hidden_size};
+    // lbr_gru requires 4 bias gates [b_u, b_r, b_cx, b_ch] -- see dnnl_lbr_gru docs:
+    // the candidate gate's input-side and hidden-side biases must stay separate
+    // because only the hidden-side term is scaled by the reset gate:
+    // c_t = tanh(W_c*x_t + b_cx + r_t*(U_c*h_{t-1} + b_ch))
+    memory::dims bias_dims = {num_layers, 1, 4, hidden_size};
     memory::dims dst_dims = {time, batch, hidden_size};
     memory::dims state_dims = {num_layers, 1, batch, hidden_size};
 
@@ -278,22 +284,34 @@ void OneDNNInferenceEngine::add_gru(std::vector<OneDNNLayer>& sequence,
             for(int j=0; j<hidden_size; ++j) w_hh_reordered[i*3*hidden_size + 2*hidden_size + j] = w_hh[(2*hidden_size + j)*hidden_size + i];
         }
 
-        std::vector<float> b_reordered(3 * hidden_size);
-        for(int j=0; j<hidden_size; ++j) b_reordered[0*hidden_size + j] = b_ih[1*hidden_size + j] + b_hh[1*hidden_size + j];
-        for(int j=0; j<hidden_size; ++j) b_reordered[1*hidden_size + j] = b_ih[0*hidden_size + j] + b_hh[0*hidden_size + j];
-        for(int j=0; j<hidden_size; ++j) b_reordered[2*hidden_size + j] = b_ih[2*hidden_size + j] + b_hh[2*hidden_size + j];
+        // PyTorch weight_ih/weight_hh/bias_ih/bias_hh gate order is [r, z, n].
+        // oneDNN lbr_gru gate order is [u(=z), r, candidate]; bias needs 4 slots:
+        // [b_u, b_r, b_cx, b_ch] with b_cx/b_ch kept separate (see note above) --
+        // summing them (as a plain vanilla_gru bias would) silently breaks the
+        // reset-gate semantics and was the root cause of the GRU state slowly
+        // diverging instead of converging.
+        std::vector<float> b_reordered(4 * hidden_size);
+        for(int j=0; j<hidden_size; ++j) b_reordered[0*hidden_size + j] = b_ih[1*hidden_size + j] + b_hh[1*hidden_size + j]; // b_u
+        for(int j=0; j<hidden_size; ++j) b_reordered[1*hidden_size + j] = b_ih[0*hidden_size + j] + b_hh[0*hidden_size + j]; // b_r
+        for(int j=0; j<hidden_size; ++j) b_reordered[2*hidden_size + j] = b_ih[2*hidden_size + j];                          // b_cx (input-side only)
+        for(int j=0; j<hidden_size; ++j) b_reordered[3*hidden_size + j] = b_hh[2*hidden_size + j];                          // b_ch (hidden-side only)
 
-        m_queue.memcpy(weights_layer_mem.get_data_handle(), w_ih_reordered.data(), w_ih_reordered.size() * sizeof(float)).wait();
-        m_queue.memcpy(weights_iter_mem.get_data_handle(), w_hh_reordered.data(), w_hh_reordered.size() * sizeof(float)).wait();
-        m_queue.memcpy(bias_mem.get_data_handle(), b_reordered.data(), b_reordered.size() * sizeof(float)).wait();
+        // Each layer occupies its own slice of the num_layers-dimensioned buffer;
+        // writing all layers to offset 0 (as before) made layer l overwrite l-1.
+        auto* layer_base = static_cast<char*>(weights_layer_mem.get_data_handle());
+        auto* iter_base = static_cast<char*>(weights_iter_mem.get_data_handle());
+        auto* bias_base = static_cast<char*>(bias_mem.get_data_handle());
+        m_queue.memcpy(layer_base + l * w_ih_reordered.size() * sizeof(float), w_ih_reordered.data(), w_ih_reordered.size() * sizeof(float)).wait();
+        m_queue.memcpy(iter_base + l * w_hh_reordered.size() * sizeof(float), w_hh_reordered.data(), w_hh_reordered.size() * sizeof(float)).wait();
+        m_queue.memcpy(bias_base + l * b_reordered.size() * sizeof(float), b_reordered.data(), b_reordered.size() * sizeof(float)).wait();
     }
 
-    auto gru_pd = gru_forward::primitive_desc(m_engine,
+    auto gru_pd = lbr_gru_forward::primitive_desc(m_engine,
         prop_kind::forward_inference, rnn_direction::unidirectional_left2right,
         gru_src.get_desc(), state_md, weights_layer_md, weights_iter_md, bias_md, dst_md, state_md);
 
     OneDNNLayer layer;
-    layer.prim = gru_forward(gru_pd);
+    layer.prim = lbr_gru_forward(gru_pd);
     layer.args = {
         {DNNL_ARG_SRC, gru_src},
         {DNNL_ARG_SRC_ITER, state_mem},
@@ -613,7 +631,8 @@ void OneDNNInferenceEngine::add_sycl_reorder_tnc_to_nchw(std::vector<OneDNNLayer
                 out_ptr[out_idx] = in_ptr[in_idx];
             });
         });
-        q.wait_and_throw();
+        // No wait: this kernel is on the shared in-order queue, so the next
+        // layer (and the terminal output copy) chain after it automatically.
     };
     sequence.push_back(layer);
 }
@@ -673,13 +692,104 @@ void OneDNNInferenceEngine::add_flatten_to_nchw(std::vector<OneDNNLayer>& sequen
     sequence.push_back(layer);
 }
 
+void OneDNNInferenceEngine::add_sycl_permute_nchw_to_flat_fmajor(std::vector<OneDNNLayer>& sequence,
+                                          const std::string& name,
+                                          dnnl::memory input_nchw, dnnl::memory& output_flat) {
+    auto in_dims = input_nchw.get_desc().get_dims(); // [N, C, 1, F]
+    int n_dim = in_dims[0];
+    int c_dim = in_dims[1];
+    int f_dim = in_dims[3];
+
+    auto dst_md = memory::desc({n_dim, c_dim * f_dim, 1, 1}, memory::data_type::f32, memory::format_tag::nchw);
+    output_flat = memory(dst_md, m_engine);
+    m_persistent_mems[name + "_permute_out"] = output_flat;
+
+    float* in_ptr = static_cast<float*>(input_nchw.get_data_handle());
+    float* out_ptr = static_cast<float*>(output_flat.get_data_handle());
+
+    OneDNNLayer layer;
+    layer.name = "SYCL_Permute_NchwToFlatFmajor(" + name + ")";
+    sycl::queue q = m_queue;
+    layer.custom_exec = [q, in_ptr, out_ptr, n_dim, c_dim, f_dim]() mutable {
+        q.submit([&](sycl::handler& cgh) {
+            cgh.parallel_for<class NchwToFlatFmajor>(sycl::range<3>(n_dim, c_dim, f_dim), [=](sycl::id<3> id) {
+                int n = id[0];
+                int c = id[1];
+                int f = id[2];
+                int in_idx = n * (c_dim * f_dim) + c * f_dim + f;   // NCHW: c*F+f
+                int out_idx = n * (c_dim * f_dim) + f * c_dim + c;  // flat: f*C+c
+                out_ptr[out_idx] = in_ptr[in_idx];
+            });
+        });
+        // No wait: this kernel is on the shared in-order queue, so the next
+        // layer (and the terminal output copy) chain after it automatically.
+    };
+    sequence.push_back(layer);
+}
+
+void OneDNNInferenceEngine::add_sycl_permute_flat_fmajor_to_nchw(std::vector<OneDNNLayer>& sequence,
+                                          const std::string& name,
+                                          dnnl::memory input_flat, dnnl::memory& output_nchw,
+                                          int out_channels) {
+    auto in_dims = input_flat.get_desc().get_dims();
+    int n_dim = in_dims[0];
+    int flat_size = in_dims[1];
+    int c_dim = out_channels;
+    int f_dim = flat_size / c_dim;
+
+    auto dst_md = memory::desc({n_dim, c_dim, 1, f_dim}, memory::data_type::f32, memory::format_tag::nchw);
+    output_nchw = memory(dst_md, m_engine);
+    m_persistent_mems[name + "_permute_out"] = output_nchw;
+
+    float* in_ptr = static_cast<float*>(input_flat.get_data_handle());
+    float* out_ptr = static_cast<float*>(output_nchw.get_data_handle());
+
+    OneDNNLayer layer;
+    layer.name = "SYCL_Permute_FlatFmajorToNchw(" + name + ")";
+    sycl::queue q = m_queue;
+    layer.custom_exec = [q, in_ptr, out_ptr, n_dim, c_dim, f_dim]() mutable {
+        q.submit([&](sycl::handler& cgh) {
+            cgh.parallel_for<class FlatFmajorToNchw>(sycl::range<3>(n_dim, c_dim, f_dim), [=](sycl::id<3> id) {
+                int n = id[0];
+                int c = id[1];
+                int f = id[2];
+                int in_idx = n * (c_dim * f_dim) + f * c_dim + c;   // flat: f*C+c
+                int out_idx = n * (c_dim * f_dim) + c * f_dim + f;  // NCHW: c*F+f
+                out_ptr[out_idx] = in_ptr[in_idx];
+            });
+        });
+        // No wait: this kernel is on the shared in-order queue, so the next
+        // layer (and the terminal output copy) chain after it automatically.
+    };
+    sequence.push_back(layer);
+}
+
+void OneDNNInferenceEngine::shift_time_history(dnnl::memory& history_mem, const float* new_frame_host,
+                                              int channels, int history_len, int width) {
+    size_t total = static_cast<size_t>(channels) * history_len * width;
+    std::vector<float> host_buf(total);
+    m_queue.memcpy(host_buf.data(), history_mem.get_data_handle(), total * sizeof(float)).wait();
+    for (int c = 0; c < channels; ++c) {
+        float* channel_ptr = host_buf.data() + static_cast<size_t>(c) * history_len * width;
+        std::memmove(channel_ptr, channel_ptr + width, static_cast<size_t>(history_len - 1) * width * sizeof(float));
+        std::memcpy(channel_ptr + static_cast<size_t>(history_len - 1) * width,
+                    new_frame_host + static_cast<size_t>(c) * width, width * sizeof(float));
+    }
+    m_queue.memcpy(history_mem.get_data_handle(), host_buf.data(), total * sizeof(float)).wait();
+}
+
 void OneDNNInferenceEngine::setup_encoder() {
     std::cout << "[INFO] Building Full Encoder..." << std::endl;
-    auto erb_input_md = memory::desc({1, 1, 1, 32}, memory::data_type::f32, memory::format_tag::nchw);
+    // H holds a rolling 3-frame causal window (t-2,t-1,t), not just the current
+    // frame: erb_conv0 has kernel_size=(3,3) with the time axis fully causal
+    // (pad top=2,bottom=0 in the reference), which requires 2 real past frames,
+    // not zero-padding, feeding tap 2 (the most recent) with real data every call.
+    auto erb_input_md = memory::desc({1, 1, 3, 32}, memory::data_type::f32, memory::format_tag::nchw);
     auto erb_input_mem = memory(erb_input_md, m_engine);
+    m_queue.fill(erb_input_mem.get_data_handle(), 0.0f, 1 * 1 * 3 * 32).wait();
     m_persistent_mems["encoder_erb_input"] = erb_input_mem;
     memory e_curr = erb_input_mem;
-    add_conv2d(m_encoder_layers, "enc.erb_conv0.1.weight", e_curr, e_curr, 64, 3, 3, 1, 1, 1, 1, 1, 1);
+    add_conv2d(m_encoder_layers, "enc.erb_conv0.1.weight", e_curr, e_curr, 64, 3, 3, 1, 1, 0, 0, 1, 1);
     add_batchnorm(m_encoder_layers, "enc.erb_conv0.2", e_curr, e_curr);
     add_relu(m_encoder_layers, e_curr, e_curr);
     m_persistent_mems["enc.erb_block0_out"] = e_curr;
@@ -698,11 +808,13 @@ void OneDNNInferenceEngine::setup_encoder() {
     add_batchnorm(m_encoder_layers, "enc.erb_conv3.2", e_curr, e_curr);
     add_relu(m_encoder_layers, e_curr, e_curr);
     m_persistent_mems["enc.erb_block3_out"] = e_curr;
-    auto df_input_md = memory::desc({1, 2, 1, 96}, memory::data_type::f32, memory::format_tag::nchw);
+    // Same rolling 3-frame causal window as encoder_erb_input, see comment above.
+    auto df_input_md = memory::desc({1, 2, 3, 96}, memory::data_type::f32, memory::format_tag::nchw);
     auto df_input_mem = memory(df_input_md, m_engine);
+    m_queue.fill(df_input_mem.get_data_handle(), 0.0f, 1 * 2 * 3 * 96).wait();
     m_persistent_mems["encoder_df_input"] = df_input_mem;
     memory c_curr = df_input_mem;
-    add_conv2d(m_encoder_layers, "enc.df_conv0.1.weight", c_curr, c_curr, 64, 3, 3, 1, 1, 1, 1, 1, 1);
+    add_conv2d(m_encoder_layers, "enc.df_conv0.1.weight", c_curr, c_curr, 64, 3, 3, 1, 1, 0, 0, 1, 1, 2);
     add_conv2d(m_encoder_layers, "enc.df_conv0.2.weight", c_curr, c_curr, 64, 1, 1, 0, 0, 0, 0, 1, 1, 1);
     add_batchnorm(m_encoder_layers, "enc.df_conv0.3", c_curr, c_curr);
     add_relu(m_encoder_layers, c_curr, c_curr);
@@ -712,13 +824,18 @@ void OneDNNInferenceEngine::setup_encoder() {
     add_batchnorm(m_encoder_layers, "enc.df_conv1.2", c_curr, c_curr);
     add_relu(m_encoder_layers, c_curr, c_curr);
     m_persistent_mems["enc.df_block1_out"] = c_curr;
+    // PyTorch feeds df_fc_emb with c1.permute(0,2,3,1).flatten(2) (frequency-major,
+    // channel-minor) -- must actually transpose the NCHW buffer, not just relabel it.
+    memory c_curr_fmajor;
+    add_sycl_permute_nchw_to_flat_fmajor(m_encoder_layers, "enc_df_fc_emb_permute", c_curr, c_curr_fmajor);
     memory cemb;
-    add_grouped_linear(m_encoder_layers, "enc.df_fc_emb.0.weight", c_curr, cemb, 32);
+    add_grouped_linear(m_encoder_layers, "enc.df_fc_emb.0.weight", c_curr_fmajor, cemb, 32);
     add_relu(m_encoder_layers, cemb, cemb);
-    
-    // Align and Merge ERB and Complex embeddings
+
+    // Align and Merge ERB and Complex embeddings -- same frequency-major flatten
+    // is required here (e3.permute(0,2,3,1).flatten(2) in the reference).
     memory erb_flat;
-    add_flatten_to_nchw(m_encoder_layers, "enc_erb_merge", e_curr, erb_flat, 512);
+    add_sycl_permute_nchw_to_flat_fmajor(m_encoder_layers, "enc_erb_merge", e_curr, erb_flat);
     add_binary_add(m_encoder_layers, erb_flat, cemb, erb_flat);
     e_curr = erb_flat;
     
@@ -735,19 +852,22 @@ void OneDNNInferenceEngine::setup_erb_decoder() {
     std::cout << "[INFO] Building ERB Decoder..." << std::endl;
     memory emb = safe_at(m_persistent_mems, "encoder_emb_out");
     memory dec_emb_out;
-    add_squeezed_gru(m_erb_decoder_layers, "erb_dec.emb_gru", emb, dec_emb_out, 256, 512, 16, true);
+    // emb_num_layers=3 in config.ini -> ErbDecoder's GRU needs num_layers=2 (emb_num_layers-1);
+    // checkpoint has real weight_ih_l1/weight_hh_l1 tensors that were being silently skipped.
+    // emb_gru_skip=none in config.ini (no gru_skip.* weights exist) -> no residual add here.
+    add_squeezed_gru(m_erb_decoder_layers, "erb_dec.emb_gru", emb, dec_emb_out, 256, 512, 16, false, 2);
     memory current = dec_emb_out;
     memory e3 = safe_at(m_persistent_mems, "enc.erb_block3_out");
     memory p3;
-    add_conv2d(m_erb_decoder_layers, "erb_dec.conv3p.0.weight", e3, p3, 64, 1, 1, 0, 0, 0, 0, 1, 1);
+    add_conv2d(m_erb_decoder_layers, "erb_dec.conv3p.0.weight", e3, p3, 64, 1, 1, 0, 0, 0, 0, 1, 1, 64);
     add_batchnorm(m_erb_decoder_layers, "erb_dec.conv3p.1", p3, p3);
+    add_relu(m_erb_decoder_layers, p3, p3);
     
-    // Reshape embedding to match p3 dimensions [1, 64, 1, 8]
+    // Reshape embedding to [1, 64, 1, 8] -- PyTorch does
+    // emb.view(b,t,f8,-1).permute(0,3,1,2) (frequency-major flat -> NCHW), the
+    // inverse of the permute used when the embedding was first flattened.
     memory reshaped_current;
-    add_flatten_to_nchw(m_erb_decoder_layers, "erb_dec_emb_reshape", current, reshaped_current, 64);
-    // Overwrite dimensions to [1, 64, 1, 8] since add_flatten_to_nchw defaults to [N, C, 1, 1]
-    auto p3_md = p3.get_desc();
-    reshaped_current = memory(p3_md, m_engine, current.get_data_handle());
+    add_sycl_permute_flat_fmajor_to_nchw(m_erb_decoder_layers, "erb_dec_emb_reshape", current, reshaped_current, 64);
     m_persistent_mems["erb_dec_emb_reshaped"] = reshaped_current;
     current = reshaped_current;
 
@@ -758,8 +878,9 @@ void OneDNNInferenceEngine::setup_erb_decoder() {
     add_relu(m_erb_decoder_layers, current, current);
     memory e2 = safe_at(m_persistent_mems, "enc.erb_block2_out");
     memory p2;
-    add_conv2d(m_erb_decoder_layers, "erb_dec.conv2p.0.weight", e2, p2, 64, 1, 1, 0, 0, 0, 0, 1, 1);
+    add_conv2d(m_erb_decoder_layers, "erb_dec.conv2p.0.weight", e2, p2, 64, 1, 1, 0, 0, 0, 0, 1, 1, 64);
     add_batchnorm(m_erb_decoder_layers, "erb_dec.conv2p.1", p2, p2);
+    add_relu(m_erb_decoder_layers, p2, p2);
     add_binary_add(m_erb_decoder_layers, p2, current, current);
     add_conv_transpose2d(m_erb_decoder_layers, "erb_dec.convt2.0.weight", current, current, 64, 1, 3, 1, 1, 0, 0, 1, 2, 64);
     add_conv2d(m_erb_decoder_layers, "erb_dec.convt2.1.weight", current, current, 64, 1, 1, 0, 0, 0, 0, 1, 1);
@@ -767,8 +888,9 @@ void OneDNNInferenceEngine::setup_erb_decoder() {
     add_relu(m_erb_decoder_layers, current, current);
     memory e1 = safe_at(m_persistent_mems, "enc.erb_block1_out");
     memory p1;
-    add_conv2d(m_erb_decoder_layers, "erb_dec.conv1p.0.weight", e1, p1, 64, 1, 1, 0, 0, 0, 0, 1, 1);
+    add_conv2d(m_erb_decoder_layers, "erb_dec.conv1p.0.weight", e1, p1, 64, 1, 1, 0, 0, 0, 0, 1, 1, 64);
     add_batchnorm(m_erb_decoder_layers, "erb_dec.conv1p.1", p1, p1);
+    add_relu(m_erb_decoder_layers, p1, p1);
     add_binary_add(m_erb_decoder_layers, p1, current, current);
     add_conv_transpose2d(m_erb_decoder_layers, "erb_dec.convt1.0.weight", current, current, 64, 1, 3, 1, 1, 0, 0, 1, 2, 64);
     add_conv2d(m_erb_decoder_layers, "erb_dec.convt1.1.weight", current, current, 64, 1, 1, 0, 0, 0, 0, 1, 1);
@@ -776,8 +898,9 @@ void OneDNNInferenceEngine::setup_erb_decoder() {
     add_relu(m_erb_decoder_layers, current, current);
     memory e0 = safe_at(m_persistent_mems, "enc.erb_block0_out");
     memory p0;
-    add_conv2d(m_erb_decoder_layers, "erb_dec.conv0p.0.weight", e0, p0, 64, 1, 1, 0, 0, 0, 0, 1, 1);
+    add_conv2d(m_erb_decoder_layers, "erb_dec.conv0p.0.weight", e0, p0, 64, 1, 1, 0, 0, 0, 0, 1, 1, 64);
     add_batchnorm(m_erb_decoder_layers, "erb_dec.conv0p.1", p0, p0);
+    add_relu(m_erb_decoder_layers, p0, p0);
     add_binary_add(m_erb_decoder_layers, p0, current, current);
     add_conv2d(m_erb_decoder_layers, "erb_dec.conv0_out.0.weight", current, current, 1, 1, 3, 1, 1, 0, 0, 1, 1);
     add_batchnorm(m_erb_decoder_layers, "erb_dec.conv0_out.1", current, current);
@@ -797,7 +920,7 @@ void OneDNNInferenceEngine::setup_df_decoder() {
     // 2. DF Skip Connection (Embedding Path)
     memory skip_out;
     add_grouped_linear(m_df_decoder_layers, "df_dec.df_skip.weight", emb, skip_out, 16);
-    add_relu(m_df_decoder_layers, skip_out, skip_out);
+    // df_skip is a bare GroupedLinearEinsum in PyTorch (deepfilternet3.py) -- no activation.
     
     // Sum GRU + Skip
     // Need to handle TNC vs NCHW for the sum
@@ -805,14 +928,23 @@ void OneDNNInferenceEngine::setup_df_decoder() {
     add_sycl_reorder_tnc_to_nchw(m_df_decoder_layers, "df_dec_gru_res", dec_emb_out, gru_out_nchw);
     add_binary_add(m_df_decoder_layers, gru_out_nchw, skip_out, gru_out_nchw);
     
-    // 3. Complex Pathway (c0 from encoder)
-    memory c0 = safe_at(m_persistent_mems, "enc.df_block0_out");
+    // 3. Complex Pathway (c0 from encoder). df_convp.1 has kernel_size_t=5 with
+    // fully causal padding (top=4,bottom=0) in the reference -- feed it a real
+    // rolling 5-frame window (kept current in infer(), see shift_time_history
+    // call there) instead of zero-padding a single frame.
+    memory c0_history_init = safe_at(m_persistent_mems, "enc.df_block0_out"); // for shape only
+    auto c0h_dims = c0_history_init.get_desc().get_dims(); // [1,64,1,96]
+    auto c0_history_md = memory::desc({c0h_dims[0], c0h_dims[1], 5, c0h_dims[3]}, memory::data_type::f32, memory::format_tag::nchw);
+    memory c0_history(c0_history_md, m_engine);
+    m_queue.fill(c0_history.get_data_handle(), 0.0f, c0h_dims[0] * c0h_dims[1] * 5 * c0h_dims[3]).wait();
+    m_persistent_mems["c0_history"] = c0_history;
     memory df_p;
     // df_convp.1 is grouped [groups=2, in=64, out=10] -> weight [10, 32, 5, 1]
-    add_conv2d(m_df_decoder_layers, "df_dec.df_convp.1.weight", c0, df_p, 10, 5, 1, 0, 0, 2, 2, 1, 1, 2);
+    add_conv2d(m_df_decoder_layers, "df_dec.df_convp.1.weight", c0_history, df_p, 10, 5, 1, 0, 0, 0, 0, 1, 1, 2);
     // df_convp.2 is pointwise [in=10, out=10]
     add_conv2d(m_df_decoder_layers, "df_dec.df_convp.2.weight", df_p, df_p, 10, 1, 1, 0, 0, 0, 0, 1, 1);
     add_batchnorm(m_df_decoder_layers, "df_dec.df_convp.3", df_p, df_p);
+    add_relu(m_df_decoder_layers, df_p, df_p);
     
     // 4. Grouped Linear to final Coefficients
     memory df_linear_out;
@@ -845,7 +977,8 @@ void OneDNNInferenceEngine::setup_df_decoder() {
                 l_ptr[i] = std::tanh(l_ptr[i]) + p_ptr[p_idx];
             });
         });
-        q.wait_and_throw();
+        // No wait: this kernel is on the shared in-order queue, so the next
+        // layer (and the terminal output copy) chain after it automatically.
     };
     m_df_decoder_layers.push_back(final_sum);
     
@@ -863,21 +996,27 @@ void OneDNNInferenceEngine::infer(const float* erb_features, const float* df_fea
     if (m_encoder_layers.empty()) return;
     try {
         auto erb_mem = safe_at(m_persistent_mems, "encoder_erb_input");
-        m_queue.memcpy(erb_mem.get_data_handle(), erb_features, 32 * sizeof(float)).wait();
-        static int frame_count = 0;
-        if (frame_count % 100 == 0) {
-            std::cout << "[DEBUG] Frame " << frame_count << " ERB In: " << erb_features[0] << ", " << erb_features[1] << std::endl;
-        }
+        shift_time_history(erb_mem, erb_features, /*channels=*/1, /*history_len=*/3, /*width=*/32);
         auto df_input_mem = safe_at(m_persistent_mems, "encoder_df_input");
         std::vector<float> df_reordered(2 * 96);
         for (int i = 0; i < 96; ++i) {
             df_reordered[i] = df_features[i * 2 + 0];
             df_reordered[96 + i] = df_features[i * 2 + 1];
         }
-        m_queue.memcpy(df_input_mem.get_data_handle(), df_reordered.data(), 2 * 96 * sizeof(float)).wait();
+        shift_time_history(df_input_mem, df_reordered.data(), /*channels=*/2, /*history_len=*/3, /*width=*/96);
         for (auto& layer : m_encoder_layers) {
             if (layer.custom_exec) layer.custom_exec();
             else layer.prim.execute(m_stream, layer.args);
+        }
+        {
+            // df_convp.1 (kh=5) needs a real 5-frame causal window of c0, not
+            // just the current frame -- roll it forward here, after the encoder
+            // has produced this frame's fresh c0, before the df decoder reads it.
+            auto c0_mem = safe_at(m_persistent_mems, "enc.df_block0_out");
+            std::vector<float> c0_host(64 * 96);
+            m_queue.memcpy(c0_host.data(), c0_mem.get_data_handle(), c0_host.size() * sizeof(float)).wait();
+            auto c0_history_mem = safe_at(m_persistent_mems, "c0_history");
+            shift_time_history(c0_history_mem, c0_host.data(), /*channels=*/64, /*history_len=*/5, /*width=*/96);
         }
         for (auto& layer : m_erb_decoder_layers) {
             if (layer.custom_exec) layer.custom_exec();
@@ -887,15 +1026,13 @@ void OneDNNInferenceEngine::infer(const float* erb_features, const float* df_fea
             if (layer.custom_exec) layer.custom_exec();
             else layer.prim.execute(m_stream, layer.args);
         }
-        m_stream.wait();
+        // No m_stream.wait() here: the mask copy below is on the same in-order
+        // queue and its wait() flushes the whole decoder chain (and surfaces any
+        // async errors) in one sync instead of two.
         auto mask_mem = safe_at(m_persistent_mems, "erb_mask_out");
         m_queue.memcpy(output_mask, mask_mem.get_data_handle(), 32 * sizeof(float)).wait();
         auto df_mem = safe_at(m_persistent_mems, "df_coefs_out");
         m_queue.memcpy(df_coefs, df_mem.get_data_handle(), 960 * sizeof(float)).wait();
-        if (frame_count % 100 == 0) {
-            std::cout << "[DEBUG] Frame " << frame_count << " Mask Out: " << output_mask[0] << ", " << output_mask[1] << std::endl;
-        }
-        frame_count++;
     } catch (const std::exception& e) {
         std::cerr << "[ERROR] oneDNN inference failed: " << e.what() << std::endl;
         throw;
@@ -914,6 +1051,14 @@ void OneDNNInferenceEngine::reset() {
         for (auto d : dims) size *= d;
         m_queue.fill(mem.get_data_handle(), 0.0f, size).wait();
     }
+    for (const char* history_name : {"encoder_erb_input", "encoder_df_input", "c0_history"}) {
+        auto it = m_persistent_mems.find(history_name);
+        if (it == m_persistent_mems.end()) continue;
+        auto dims = it->second.get_desc().get_dims();
+        size_t size = 1;
+        for (auto d : dims) size *= d;
+        m_queue.fill(it->second.get_data_handle(), 0.0f, size).wait();
+    }
 }
 
 void OneDNNInferenceEngine::test_conv2d_mapping() {}
@@ -921,4 +1066,4 @@ void OneDNNInferenceEngine::test_batchnorm_mapping() {}
 void OneDNNInferenceEngine::test_gru_mapping() {}
 void OneDNNInferenceEngine::test_linear_mapping() {}
 
-} // namespace sa::infrastructure
+} // namespace silence_arc::infrastructure

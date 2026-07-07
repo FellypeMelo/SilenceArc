@@ -33,8 +33,6 @@ pub mod logging;
 #[cfg(feature = "tract")]
 pub mod tract;
 
-pub mod gpu_bridge;
-
 #[cfg(feature = "wasm")]
 mod wasm;
 

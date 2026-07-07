@@ -4,11 +4,13 @@
 #include <string>
 #include <memory>
 
-namespace sa::domain {
+namespace silence_arc::infrastructure {
 
 /**
- * @brief Domain interface for GPU-accelerated noise suppression operations.
- * Following Clean Architecture, this interface remains pure and decoupled from SYCL specifics.
+ * @brief Infrastructure-internal abstraction for GPU-accelerated frame
+ * processing. It is the DSP half of a Bridge that keeps the SYCL/oneMKL device
+ * code separable from the neural-network engine; it is NOT a backend-selection
+ * seam (that is domain::INoiseSuppressor). Private to the SYCL adapter.
  */
 class GPUAccelerator {
 public:
@@ -40,4 +42,4 @@ public:
     virtual void set_deep_filtering_enabled(bool enabled) = 0;
 };
 
-} // namespace sa::domain
+} // namespace silence_arc::infrastructure

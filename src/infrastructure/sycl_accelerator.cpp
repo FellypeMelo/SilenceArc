@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <algorithm>
 
-namespace sa::infrastructure {
+namespace silence_arc::infrastructure {
 
 static std::unique_ptr<SYCLAccelerator> g_accelerator = nullptr;
 static std::mutex g_accel_mutex;
@@ -126,6 +126,11 @@ void SYCLAccelerator::setup_kernels() {
     try {
         m_fft_config = std::make_unique<oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>>(static_cast<std::int64_t>(m_fft_size));
         m_fft_config->set_value(oneapi::mkl::dft::config_param::PLACEMENT, oneapi::mkl::dft::config_value::NOT_INPLACE);
+        // Fold the constant STFT analysis normalization (wnorm) into the forward
+        // transform scale so it happens inside the DFT instead of a per-frame
+        // element-wise kernel + sync. Matches reference DFState::wnorm.
+        const double wnorm = 1.0 / (static_cast<double>(m_fft_size) * m_fft_size / (2.0 * m_hop_size));
+        m_fft_config->set_value(oneapi::mkl::dft::config_param::FORWARD_SCALE, wnorm);
         m_fft_config->commit(*m_queue);
 
         m_ifft_config = std::make_unique<oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>>(static_cast<std::int64_t>(m_fft_size));
@@ -242,22 +247,21 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
         const size_t nb_df_val = m_nb_df;
         const bool df_enabled_val = m_df_enabled;
 
+        // The queue is in-order, so every kernel/DFT/memcpy below auto-chains
+        // after the previous one on the device. We therefore only wait() at the
+        // points where the HOST must read device data: the two device->host
+        // feature copies (EMA + NN run on the host) and the final output copy.
+        // wnorm is folded into the DFT FORWARD_SCALE (see setup_kernels).
+
         // 1. Analysis
-        q.memcpy(analysis + overlap_size_val, input, hop_size_val * sizeof(float)).wait();
+        q.memcpy(analysis + overlap_size_val, input, hop_size_val * sizeof(float));
         float* fft_in = reconstructed;
         q.submit([&](sycl::handler& h) {
             h.parallel_for(sycl::range<1>(fft_size_val), [=](sycl::id<1> idx) {
                 fft_in[idx] = analysis[idx] * window[idx];
             });
-        }).wait();
-        oneapi::mkl::dft::compute_forward(*m_fft_config, fft_in, freq).wait();
-
-        const float wnorm = 1.0f / (static_cast<float>(fft_size_val * fft_size_val) / (2.0f * hop_size_val));
-        q.submit([&](sycl::handler& h) {
-            h.parallel_for(sycl::range<1>(freq_size_val), [=](sycl::id<1> idx) {
-                freq[idx] *= wnorm;
-            });
-        }).wait();
+        });
+        oneapi::mkl::dft::compute_forward(*m_fft_config, fft_in, freq);
 
         // 2. Feature Extraction
         float* ps_ptr = m_power_spectrum;
@@ -267,7 +271,7 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
                 float im = freq[idx].imag();
                 ps_ptr[idx] = re * re + im * im;
             });
-        }).wait();
+        });
 
         float* fb_ptr = m_erb_fb_matrix;
         float* erb_ptr = m_erb_buffer;
@@ -279,12 +283,18 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
                 }
                 erb_ptr[erb_idx] = sum;
             });
-        }).wait();
+        });
 
         // 3. Normalization (Reference: 10 * log10 and band_mean_norm_erb)
         std::vector<float> host_erb(nb_erb_val);
         q.memcpy(host_erb.data(), m_erb_buffer, nb_erb_val * sizeof(float)).wait();
-        const float alpha = 0.1f;
+        // EMA smoothing factor for band_mean_norm_erb / band_unit_norm.
+        // Reference libDF calc_norm_alpha(sr=48000, hop=480, tau=1):
+        //   alpha = round(exp(-hop/sr/tau) * 1000) / 1000 = round(exp(-0.01)*1000)/1000 = 0.990
+        // The state must adapt SLOWLY (alpha ~ 0.99). The old value 0.1 made the running
+        // mean track the current frame (s ~= x), collapsing (x - s) ~= 0 -> degenerate
+        // features -> the NN emitted a constant ~0.16 mask.
+        const float alpha = 0.99f;
         for (size_t i = 0; i < nb_erb_val; ++i) {
             float lp = std::log10(host_erb[i] + 1e-10f) * 10.0f;
             m_erb_mean[i] = lp * (1.0f - alpha) + m_erb_mean[i] * alpha;
@@ -315,7 +325,7 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
 
         // 6. Apply Filtering & Synthesis
         q.memcpy(m_df_coefs, host_df_coefs.data(), host_df_coefs.size() * sizeof(float));
-        q.memcpy(m_erb_buffer, host_mask.data(), nb_erb_val * sizeof(float)).wait();
+        q.memcpy(m_erb_buffer, host_mask.data(), nb_erb_val * sizeof(float));
 
         q.submit([&](sycl::handler& h) {
             float* m_ptr = m_erb_buffer;
@@ -346,23 +356,27 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
                 }
                 h_ptr[f_idx] = freq[f_idx];
             });
-        }).wait();
+        });
 
-        oneapi::mkl::dft::compute_backward(*m_ifft_config, filtered_freq, reconstructed).wait();
+        oneapi::mkl::dft::compute_backward(*m_ifft_config, filtered_freq, reconstructed);
 
         q.submit([&](sycl::handler& h) {
             h.parallel_for(sycl::range<1>(hop_size_val), [=](sycl::id<1> idx) {
                 device_out[idx] = (reconstructed[idx] * window[idx]) + synthesis[idx];
                 synthesis[idx] = reconstructed[idx + hop_size_val] * window[idx + hop_size_val];
             });
-        }).wait();
+        });
 
-        q.memcpy(output, device_out, hop_size_val * sizeof(float)).wait();
+        // Roll the analysis buffer forward for the next frame. Enqueued (not
+        // waited) -- the next frame's first memcpy chains after it in-order.
         q.submit([&](sycl::handler& h) {
             h.parallel_for(sycl::range<1>(overlap_size_val), [=](sycl::id<1> idx) {
                 analysis[idx] = analysis[idx + hop_size_val];
             });
-        }).wait();
+        });
+
+        // Terminal sync: the caller reads `output` immediately after we return.
+        q.memcpy(output, device_out, hop_size_val * sizeof(float)).wait();
     } catch (const sycl::exception& e) {
         std::cerr << "[ERROR] SYCL Runtime Exception: " << e.what() << std::endl;
     } catch (const std::exception& e) {
@@ -370,39 +384,39 @@ void SYCLAccelerator::process_frame(const float* input, float* output, size_t si
     }
 }
 
-} // namespace sa::infrastructure
+} // namespace silence_arc::infrastructure
 
 extern "C" {
 bool sycl_init() {
-    std::lock_guard<std::mutex> lock(sa::infrastructure::g_accel_mutex);
-    if (!sa::infrastructure::g_accelerator) {
-        sa::infrastructure::g_accelerator = std::make_unique<sa::infrastructure::SYCLAccelerator>();
+    std::lock_guard<std::mutex> lock(silence_arc::infrastructure::g_accel_mutex);
+    if (!silence_arc::infrastructure::g_accelerator) {
+        silence_arc::infrastructure::g_accelerator = std::make_unique<silence_arc::infrastructure::SYCLAccelerator>();
     }
-    return sa::infrastructure::g_accelerator->initialize();
+    return silence_arc::infrastructure::g_accelerator->initialize();
 }
 void sycl_process(const float* input, float* output, size_t size) {
-    std::lock_guard<std::mutex> lock(sa::infrastructure::g_accel_mutex);
-    if (sa::infrastructure::g_accelerator) {
-        sa::infrastructure::g_accelerator->process_frame(input, output, size);
+    std::lock_guard<std::mutex> lock(silence_arc::infrastructure::g_accel_mutex);
+    if (silence_arc::infrastructure::g_accelerator) {
+        silence_arc::infrastructure::g_accelerator->process_frame(input, output, size);
     }
 }
 void sycl_get_device_name(char* buffer, size_t max_size) {
-    std::lock_guard<std::mutex> lock(sa::infrastructure::g_accel_mutex);
-    if (sa::infrastructure::g_accelerator) {
-        std::string name = sa::infrastructure::g_accelerator->get_device_name();
+    std::lock_guard<std::mutex> lock(silence_arc::infrastructure::g_accel_mutex);
+    if (silence_arc::infrastructure::g_accelerator) {
+        std::string name = silence_arc::infrastructure::g_accelerator->get_device_name();
         strncpy_s(buffer, max_size, name.c_str(), _TRUNCATE);
     }
 }
 void sycl_set_df_enabled(bool enabled) {
-    std::lock_guard<std::mutex> lock(sa::infrastructure::g_accel_mutex);
-    if (sa::infrastructure::g_accelerator) {
-        sa::infrastructure::g_accelerator->set_deep_filtering_enabled(enabled);
+    std::lock_guard<std::mutex> lock(silence_arc::infrastructure::g_accel_mutex);
+    if (silence_arc::infrastructure::g_accelerator) {
+        silence_arc::infrastructure::g_accelerator->set_deep_filtering_enabled(enabled);
     }
 }
 void sycl_reset() {
-    std::lock_guard<std::mutex> lock(sa::infrastructure::g_accel_mutex);
-    if (sa::infrastructure::g_accelerator) {
-        sa::infrastructure::g_accelerator->reset();
+    std::lock_guard<std::mutex> lock(silence_arc::infrastructure::g_accel_mutex);
+    if (silence_arc::infrastructure::g_accelerator) {
+        silence_arc::infrastructure::g_accelerator->reset();
     }
 }
 }

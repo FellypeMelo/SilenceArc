@@ -1,61 +1,105 @@
+// Golden-output characterization test for the SYCL/oneDNN pipeline.
+//
+// (The previous version asserted MSE < 1e-4 on a synthetic two-tone signal --
+//  an invalid oracle: DeepFilterNet3 legitimately suppresses pure tones, so no
+//  correct implementation preserves them. Real-speech quality now lives in
+//  test_backend_parity.cpp.)
+//
+// This test pins the SYCL output on a fixed clean-speech input to a golden
+// capture so the hot-path refactor (removing redundant waits, moving the EMA
+// normalisation onto the device, fusing kernels) can be proven output-preserving:
+// removing a wait on an in-order queue must not change a single sample.
+//
+// Behaviour:
+//   * No golden present (or SA_REGEN_GOLDEN set) -> capture the current output as
+//     the golden and pass. Run this once to establish the baseline before the
+//     refactor.
+//   * Golden present -> re-run and assert the output matches within a tight
+//     tolerance. A load-bearing wait removed by mistake will trip this.
+//
+// The golden is hardware/driver specific (captured on the dev GPU); the test
+// skips when no SYCL device is available.
 #include "sycl_test_harness.h"
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <complex>
 
-using namespace sa::test;
+#include "silence_arc/infrastructure/wav_loader.h"
+
+#include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
+using namespace silence_arc::test;
+using silence_arc::infrastructure::WavData;
+using silence_arc::infrastructure::WavLoader;
 
 extern "C" {
     bool sycl_init();
     void sycl_process(const float* input, float* output, size_t size);
+    void sycl_reset();
 }
 
-void test_complex_signal_preservation() {
-    SA_ASSERT(sycl_init(), "Init failed");
-    
-    const size_t hop_size = 480;
-    const double sample_rate = 48000.0;
-    const size_t num_frames = 100;
-    const double pi = 3.14159265358979323846;
-    
-    std::vector<float> input(hop_size);
-    std::vector<float> output(hop_size);
-    
-    // Generate a signal: sum of sines (1kHz and 5kHz)
-    auto generate_frame = [&](size_t frame_idx) {
-        for (size_t i = 0; i < hop_size; ++i) {
-            double t = static_cast<double>(frame_idx * hop_size + i) / sample_rate;
-            input[i] = static_cast<float>(0.5 * std::sin(2.0 * pi * 1000.0 * t) + 
-                                         0.3 * std::sin(2.0 * pi * 5000.0 * t));
-        }
-    };
+namespace {
+constexpr size_t kHop = 480;
 
-    double total_mse = 0;
-    size_t count = 0;
+std::filesystem::path RepoRoot() {
+    auto p = std::filesystem::current_path();
+    if (p.filename() == "build") p = p.parent_path();
+    return p;
+}
 
-    for (size_t f = 0; f < num_frames; ++f) {
-        generate_frame(f);
-        sycl_process(input.data(), output.data(), hop_size);
-        
-        // Skip first few frames to account for STFT latency
-        if (f > 10) {
-            for (size_t i = 0; i < hop_size; ++i) {
-                float diff = input[i] - output[i];
-                total_mse += diff * diff;
-                count++;
-            }
-        }
+std::filesystem::path GoldenPath() {
+    return RepoRoot() / "tests" / "samples" / "No-Noise_sycl_golden.bin";
+}
+}  // namespace
+
+void test_sycl_golden_output() {
+    SA_ASSERT(sycl_init(), "SYCL init failed");
+
+    WavData clean;
+    SA_ASSERT(WavLoader::Load((RepoRoot() / "tests" / "samples" / "No-Noise.wav").string(), clean),
+              "Could not load No-Noise.wav");
+
+    std::vector<float> out(clean.samples.size(), 0.0f);
+    sycl_reset();
+    for (size_t i = 0; i + kHop <= clean.samples.size(); i += kHop) {
+        sycl_process(&clean.samples[i], &out[i], kHop);
     }
 
-    double mse = total_mse / count;
-    std::cout << "[KERNELS] Mean Squared Error (Synthetic Signal): " << mse << std::endl;
-    
-    // Check if MSE is low enough (preservation of signal)
-    SA_ASSERT(mse < 1e-4, "Signal preservation failed (MSE too high)");
+    const auto golden_path = GoldenPath();
+    const bool regen = std::getenv("SA_REGEN_GOLDEN") != nullptr;
+    std::ifstream gin(golden_path, std::ios::binary);
+
+    if (regen || !gin) {
+        std::ofstream gout(golden_path, std::ios::binary);
+        gout.write(reinterpret_cast<const char*>(out.data()), out.size() * sizeof(float));
+        std::cout << "[GOLDEN] Captured baseline (" << out.size() << " samples) to "
+                  << golden_path.string() << std::endl;
+        return;
+    }
+
+    std::vector<float> golden(out.size());
+    gin.read(reinterpret_cast<char*>(golden.data()), golden.size() * sizeof(float));
+    SA_ASSERT(gin.gcount() == static_cast<std::streamsize>(golden.size() * sizeof(float)),
+              "Golden size mismatch -- regenerate with SA_REGEN_GOLDEN=1");
+
+    double max_abs = 0.0, sse = 0.0;
+    for (size_t i = 0; i < out.size(); ++i) {
+        double d = static_cast<double>(out[i]) - golden[i];
+        max_abs = std::max(max_abs, std::abs(d));
+        sse += d * d;
+    }
+    double rmse = std::sqrt(sse / out.size());
+    std::cout << "[GOLDEN] max_abs_diff=" << max_abs << " rmse=" << rmse << std::endl;
+
+    // In-order-queue wait removal must be exactly output-preserving; the
+    // device-EMA/fusion work may introduce only last-bit rounding noise.
+    SA_ASSERT(max_abs < 1e-4, "SYCL output diverged from golden (a wait may have been load-bearing)");
 }
 
 int main() {
-    TestHarness::instance().add_test("SignalPreservation", test_complex_signal_preservation);
+    TestHarness::instance().add_test("SyclGoldenOutput", test_sycl_golden_output);
     return TestHarness::instance().run_all();
 }

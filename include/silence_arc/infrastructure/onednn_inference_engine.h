@@ -1,6 +1,6 @@
 #pragma once
 
-#include "silence_arc/domain/neural_network.h"
+#include "silence_arc/infrastructure/neural_network.h"
 #include <dnnl.hpp>
 #include <sycl/sycl.hpp>
 #include <memory>
@@ -10,7 +10,7 @@
 #include <vector>
 #include <functional>
 
-namespace sa::infrastructure {
+namespace silence_arc::infrastructure {
 
 struct OneDNNLayer {
     dnnl::primitive prim;
@@ -19,7 +19,7 @@ struct OneDNNLayer {
     std::function<void()> custom_exec = nullptr;
 };
 
-class alignas(64) OneDNNInferenceEngine : public domain::NeuralNetworkModel {
+class alignas(64) OneDNNInferenceEngine : public NeuralNetworkModel {
 public:
     OneDNNInferenceEngine(sycl::queue& queue, dnnl::engine& engine, dnnl::stream& stream);
     ~OneDNNInferenceEngine() override = default;
@@ -110,6 +110,27 @@ private:
                                       const std::string& name,
                                       dnnl::memory input_nchw, dnnl::memory& output_tnc);
 
+    // Rolls a [C, history_len, W] causal time-history buffer forward by one frame:
+    // drops the oldest slot, shifts the rest back, and writes new_frame_host
+    // (shaped [C, W]) into the newest slot. Used so kh>1 "causal" convs (which
+    // in PyTorch see kh-1 real past frames, not zero-padding) get genuine history.
+    void shift_time_history(dnnl::memory& history_mem, const float* new_frame_host,
+                            int channels, int history_len, int width);
+
+    // PyTorch flattens [N,C,1,F] conv feature maps as x.permute(0,2,3,1).flatten(2),
+    // i.e. frequency-major/channel-minor (flat index = f*C + c). NCHW's native
+    // layout is channel-major/frequency-minor (c*F + f) -- these two helpers do
+    // the real data-moving transpose between the two, unlike add_flatten_to_nchw
+    // (which is a pure pointer-alias reshape and silently keeps the wrong order).
+    void add_sycl_permute_nchw_to_flat_fmajor(std::vector<OneDNNLayer>& sequence,
+                                              const std::string& name,
+                                              dnnl::memory input_nchw, dnnl::memory& output_flat);
+
+    void add_sycl_permute_flat_fmajor_to_nchw(std::vector<OneDNNLayer>& sequence,
+                                              const std::string& name,
+                                              dnnl::memory input_flat, dnnl::memory& output_nchw,
+                                              int out_channels);
+
     sycl::queue& m_queue;
     dnnl::engine& m_engine;
     dnnl::stream& m_stream;
@@ -122,4 +143,4 @@ private:
     std::vector<OneDNNLayer> m_df_decoder_layers;
 };
 
-} // namespace sa::infrastructure
+} // namespace silence_arc::infrastructure

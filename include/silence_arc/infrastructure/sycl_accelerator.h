@@ -1,6 +1,6 @@
 #pragma once
 
-#include "silence_arc/domain/gpu_accelerator.h"
+#include "silence_arc/infrastructure/gpu_accelerator.h"
 #include <sycl/sycl.hpp>
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/dft.hpp>
@@ -9,7 +9,7 @@
 #include <vector>
 #include <complex>
 
-namespace sa::infrastructure {
+namespace silence_arc::infrastructure {
 
 class OneDNNInferenceEngine;
 
@@ -17,7 +17,7 @@ class OneDNNInferenceEngine;
  * @brief SYCL implementation of GPUAccelerator optimized for Intel Arc (oneAPI).
  * Uses Unified Shared Memory (USM) for zero-copy performance.
  */
-class alignas(64) SYCLAccelerator : public domain::GPUAccelerator {
+class alignas(64) SYCLAccelerator : public GPUAccelerator {
 public:
     SYCLAccelerator();
     ~SYCLAccelerator() override;
@@ -86,7 +86,7 @@ private:
     void cleanup();
 };
 
-} // namespace sa::infrastructure
+} // namespace silence_arc::infrastructure
 
 extern "C" {
     bool sycl_init();

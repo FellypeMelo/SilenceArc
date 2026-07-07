@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "silence_arc/infrastructure/async_audio_pipeline.h"
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <thread>
 
 namespace silence_arc {
@@ -42,7 +44,55 @@ TEST(AudioPipelineTest, ProcessCallbackIsCalled) {
     EXPECT_TRUE(pipeline.PopOutput(output));
     EXPECT_EQ(output.data.size(), input.data.size());
     EXPECT_FLOAT_EQ(output.data[0], 0.1f);
-    
+
+    pipeline.Stop();
+}
+
+// Backpressure: a slow worker + a burst of inputs must not grow memory/latency
+// without bound; the bounded queue drops the stalest frames instead.
+TEST(AudioPipelineTest, BoundedQueueDropsOldestUnderBackpressure) {
+    infrastructure::AsyncAudioPipeline pipeline;
+    pipeline.SetMaxQueueDepth(4);
+    pipeline.SetProcessCallback([](const domain::AudioBuffer& in, domain::AudioBuffer& out) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20)); // slow worker
+        out.data = in.data;
+    });
+    pipeline.Start();
+
+    for (int i = 0; i < 100; ++i) {
+        domain::AudioBuffer b;
+        b.data.assign(480, static_cast<float>(i));
+        pipeline.PushInput(b);
+    }
+
+    // 100 frames burst into a depth-4 queue behind a 20 ms worker -> drops happen.
+    EXPECT_GT(pipeline.FramesDropped(), 0u);
+    pipeline.Stop();
+}
+
+// The real audio-device callback pushes via PushInput; it must return in well
+// under the frame budget even while the GPU/NN worker is busy on a slow frame.
+TEST(AudioPipelineTest, PushInputNeverBlocksTheCaller) {
+    infrastructure::AsyncAudioPipeline pipeline;
+    pipeline.SetMaxQueueDepth(4);
+    pipeline.SetProcessCallback([](const domain::AudioBuffer& in, domain::AudioBuffer& out) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // very slow worker
+        out.data = in.data;
+    });
+    pipeline.Start();
+
+    domain::AudioBuffer b;
+    b.data.assign(480, 1.0f);
+    double max_us = 0.0;
+    for (int i = 0; i < 50; ++i) {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        pipeline.PushInput(b);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        max_us = std::max(max_us, std::chrono::duration<double, std::micro>(t1 - t0).count());
+    }
+
+    // Must be far below the 10 ms frame budget (realistically microseconds).
+    EXPECT_LT(max_us, 1000.0);
     pipeline.Stop();
 }
 

@@ -2,8 +2,10 @@
 #include <iostream>
 #include <vector>
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 
-using namespace sa::test;
+using namespace silence_arc::test;
 
 // Extern declarations from sycl_accelerator.cpp C API
 extern "C" {
@@ -24,32 +26,33 @@ void test_sycl_ffi_initialization() {
 
 void test_sycl_ffi_processing() {
     sycl_init();
-    
+
     const size_t hop_size = 480;
+    // A constant DC signal is not speech; DeepFilterNet3 legitimately suppresses
+    // it, so this is an FFI smoke test (the full STFT -> NN -> ISTFT loop runs and
+    // returns finite, bounded audio) -- NOT a passthrough test. (The old version
+    // asserted avg > 0.9, i.e. perfect reconstruction, which no correct denoiser
+    // delivers on a non-speech input.)
     std::vector<float> input(hop_size, 1.0f);
     std::vector<float> output(hop_size, 0.0f);
-    
-    // Process several frames to fill the pipeline and history
-    // Due to STFT/ISTFT and overlap-add, perfect reconstruction of 1.0f 
-    // might take a few frames or have windowing effects at boundaries.
+
     for (int i = 0; i < 10; ++i) {
         sycl_process(input.data(), output.data(), hop_size);
     }
-    
-    // Verify last output frame
-    // Since we pass 1.0f continuously, and Vorbis window satisfies Princen-Bradley,
-    // the output should eventually converge to ~1.0f.
-    float sum = 0;
-    for(size_t i = 0; i < hop_size; ++i) {
-        sum += output[i];
+
+    float max_abs = 0.0f;
+    bool all_finite = true;
+    for (size_t i = 0; i < hop_size; ++i) {
+        all_finite = all_finite && std::isfinite(output[i]);
+        max_abs = std::max(max_abs, std::fabs(output[i]));
     }
-    float avg = sum / hop_size;
-    std::cout << "[FFI] Average Output Level: " << avg << std::endl;
-    
-    // Check if it's reasonably close to 1.0 (some boundary effects might exist)
-    SA_ASSERT(avg > 0.9f, "FFI Processing failed (Signal lost or too low)");
-    
-    std::cout << "[FFI] Processing verified (Full SYCL Loop)" << std::endl;
+    std::cout << "[FFI] max|output|=" << max_abs << std::endl;
+
+    SA_ASSERT(all_finite, "FFI produced non-finite output (NaN/Inf)");
+    // Output must stay bounded (no runaway/overflow); the input amplitude is 1.0.
+    SA_ASSERT(max_abs < 4.0f, "FFI output diverged (unbounded)");
+
+    std::cout << "[FFI] Processing verified (Full SYCL Loop ran, output finite/bounded)" << std::endl;
 }
 
 int main() {

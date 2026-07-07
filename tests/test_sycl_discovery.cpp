@@ -2,7 +2,7 @@
 #include <sycl/sycl.hpp>
 #include <iostream>
 
-using namespace sa::test;
+using namespace silence_arc::test;
 
 void test_detects_intel_arc_gpu() {
     bool found_arc = false;

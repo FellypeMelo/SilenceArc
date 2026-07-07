@@ -2,6 +2,7 @@
 #include "silence_arc/infrastructure/deep_filter_adapter.h"
 #include "silence_arc/infrastructure/sycl_noise_suppressor.h"
 #include "silence_arc/infrastructure/miniaudio_pipeline.h"
+#include "silence_arc/infrastructure/async_audio_pipeline.h"
 #include "silence_arc/infrastructure/miniaudio_device_manager.h"
 #include "silence_arc/infrastructure/sycl_accelerator.h"
 #include "silence_arc/infrastructure/sycl_telemetry_provider.h"
@@ -60,44 +61,58 @@ int main() {
     silence_arc::domain::AudioStreamBuffer out_buffer;
     size_t frame_size = suppressor->GetFrameLength();
 
-    silence_arc::infrastructure::MiniaudioPipeline pipeline;
-    pipeline.SetProcessCallback([&](const silence_arc::domain::AudioBuffer& input, silence_arc::domain::AudioBuffer& output) {
+    // The heavy per-frame work (GPU/NN inference) runs on this dedicated
+    // TIME_CRITICAL worker thread, NOT on the real-time audio device callback.
+    // Its lifetime spans all of main(), independent of device Start/Stop cycles.
+    silence_arc::infrastructure::AsyncAudioPipeline async;
+    async.SetProcessCallback([&](const silence_arc::domain::AudioBuffer& frame_in,
+                                 silence_arc::domain::AudioBuffer& frame_out) {
         auto start_time = std::chrono::steady_clock::now();
-        
-        in_buffer.Push(input.data.data(), input.data.size());
 
-        while (in_buffer.Available() >= frame_size) {
-            std::vector<float> frame_in(frame_size, 0.0f);
-            std::vector<float> frame_out(frame_size, 0.0f);
-            in_buffer.Pop(frame_in.data(), frame_size);
-
-            if (ui.GetState().noise_suppression_enabled) {
-                // Set attention limit from UI
-                suppressor->SetAttenuationLimit(ui.GetState().suppression_limit_db);
-                suppressor->ProcessFrame(frame_in.data(), frame_out.data());
-            } else {
-                frame_out = frame_in; // Pass-through
-            }
-            out_buffer.Push(frame_out.data(), frame_size);
+        frame_out.data.resize(frame_in.data.size());
+        // enable/limit are written by the UI thread; a torn read of a bool/float
+        // is benign here (worst case one frame uses the previous setting).
+        if (ui.GetState().noise_suppression_enabled) {
+            suppressor->SetAttenuationLimit(ui.GetState().suppression_limit_db);
+            suppressor->ProcessFrame(frame_in.data.data(), frame_out.data.data());
+        } else {
+            frame_out.data = frame_in.data; // Pass-through
         }
 
-        // Output exactly what miniaudio requested to prevent dropouts/desync
-        size_t requested_size = output.data.size();
-        size_t available_out = out_buffer.Available();
-        size_t push_size = (requested_size < available_out) ? requested_size : available_out;
-        
-        if (push_size > 0) {
-            out_buffer.Pop(output.data.data(), push_size);
-        }
-        
-        // If we don't have enough, the rest of output.data is already 0.0 from initialization
-        
         auto end_time = std::chrono::steady_clock::now();
         auto process_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         telemetry_provider.SetProcessingLatency(process_duration.count() / 1000.0f);
-
-        // Mock signal levels for now
         ui.UpdateSignalLevels(0.5f, 0.5f, ui.GetState().noise_suppression_enabled ? 10.0f : 0.0f);
+    });
+    async.Start();
+
+    silence_arc::infrastructure::MiniaudioPipeline pipeline;
+    // The device callback is now a thin, non-blocking shim: frame the input, hand
+    // whole frames to the async worker, and drain whatever the worker has already
+    // finished back to the device. Never calls ProcessFrame on the audio thread.
+    pipeline.SetProcessCallback([&](const silence_arc::domain::AudioBuffer& input, silence_arc::domain::AudioBuffer& output) {
+        in_buffer.Push(input.data.data(), input.data.size());
+
+        while (in_buffer.Available() >= frame_size) {
+            silence_arc::domain::AudioBuffer frame;
+            frame.data.resize(frame_size);
+            in_buffer.Pop(frame.data.data(), frame_size);
+            async.PushInput(frame);
+        }
+
+        // Collect frames the worker finished (from earlier callbacks).
+        silence_arc::domain::AudioBuffer done;
+        while (async.PopOutput(done)) {
+            out_buffer.Push(done.data.data(), done.data.size());
+        }
+
+        // Emit exactly what miniaudio requested; short-fall stays zero-filled.
+        size_t requested_size = output.data.size();
+        size_t available_out = out_buffer.Available();
+        size_t push_size = (requested_size < available_out) ? requested_size : available_out;
+        if (push_size > 0) {
+            out_buffer.Pop(output.data.data(), push_size);
+        }
     });
 
     // Initial signal level update
@@ -143,6 +158,7 @@ int main() {
     }
 
     pipeline.Stop();
+    async.Stop();
     ui.Shutdown();
 
     return 0;

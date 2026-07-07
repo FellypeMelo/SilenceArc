@@ -6,7 +6,7 @@
 #include <functional>
 #include <cstdio>
 
-namespace sa::test {
+namespace silence_arc::test {
 
 struct TestResult {
     bool success;
@@ -60,4 +60,4 @@ private:
 
 #define SA_EXPECT_TRUE(expr) SA_ASSERT(expr, "Expected true")
 
-} // namespace sa::test
+} // namespace silence_arc::test

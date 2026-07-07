@@ -1,7 +1,7 @@
 # ADR 001: Selection of Primary Noise Suppression Model
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 Silence Arc requires a real-time noise suppression model that provides high-quality voice enhancement and effective background noise removal. The model must be capable of being accelerated on Intel Arc GPUs using SYCL/oneAPI without relying on the OpenVino framework. We compared two primary candidates: **RNNoise** and **DeepFilterNet3**.

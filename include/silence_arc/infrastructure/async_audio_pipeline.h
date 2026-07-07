@@ -5,10 +5,23 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <deque>
+#include <cstddef>
+#include <cstdint>
+#include <condition_variable>
 
 namespace silence_arc {
 namespace infrastructure {
 
+// Runs the (potentially slow, GPU-bound) noise-suppression callback on a
+// dedicated TIME_CRITICAL worker thread so it never blocks the real-time audio
+// device callback. The audio callback stays a thin push/pop shim.
+//
+// Both queues are BOUNDED with a drop-oldest policy: if the producer (audio
+// callback) outruns the worker, or the consumer falls behind the worker, the
+// stalest frame is discarded and `FramesDropped()` is incremented rather than
+// letting latency grow unbounded (the old std::vector queues were unbounded with
+// O(n) erase(begin())).
 class AsyncAudioPipeline : public domain::IAudioPipeline {
 public:
     AsyncAudioPipeline();
@@ -20,9 +33,14 @@ public:
 
     void SetProcessCallback(domain::IAudioPipeline::ProcessCallback callback) override;
 
-    // Simulation methods for testing
+    // Producer/consumer API used by the composing device callback (and tests).
     void PushInput(const domain::AudioBuffer& buffer);
     bool PopOutput(domain::AudioBuffer& buffer);
+
+    // Telemetry / tuning.
+    void SetMaxQueueDepth(size_t depth) { max_queue_depth_ = depth ? depth : 1; }
+    size_t MaxQueueDepth() const { return max_queue_depth_; }
+    uint64_t FramesDropped() const { return frames_dropped_.load(std::memory_order_relaxed); }
 
 private:
     void ThreadLoop();
@@ -32,10 +50,13 @@ private:
     domain::IAudioPipeline::ProcessCallback callback_;
     mutable std::mutex callback_mutex_;
 
-    std::vector<domain::AudioBuffer> input_queue_;
-    std::vector<domain::AudioBuffer> output_queue_;
+    std::deque<domain::AudioBuffer> input_queue_;
+    std::deque<domain::AudioBuffer> output_queue_;
     mutable std::mutex queue_mutex_;
     std::condition_variable cv_;
+
+    std::atomic<size_t> max_queue_depth_{8};   // ~80 ms of 10 ms frames
+    std::atomic<uint64_t> frames_dropped_{0};
 };
 
 } // namespace infrastructure

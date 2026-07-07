@@ -36,3 +36,6 @@ Thumbs.db
 # Logs and tests
 *.txt
 *.log
+
+# Hardware-specific SYCL golden capture for test_kernel_correctness
+tests/samples/No-Noise_sycl_golden.bin

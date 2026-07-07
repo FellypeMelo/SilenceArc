@@ -2,8 +2,9 @@
 #include "silence_arc/infrastructure/onednn_inference_engine.h"
 #include <vector>
 #include <iostream>
+#include <filesystem>
 
-using namespace sa::infrastructure;
+using namespace silence_arc::infrastructure;
 
 int main() {
     try {
@@ -18,8 +19,13 @@ int main() {
         OneDNNInferenceEngine engine(accel.get_queue(), accel.get_dnnl_engine(), accel.get_dnnl_stream());
         
         std::cout << "[INFO] Loading weights..." << std::endl;
-        if (!engine.load_weights("models/df3_weights")) {
-            std::cerr << "Weights load failed" << std::endl;
+        // Resolve the weights dir relative to the repo root so the test works
+        // whether it runs from the source tree or the build/ subdirectory.
+        auto wpath = std::filesystem::current_path();
+        if (wpath.filename() == "build") wpath = wpath.parent_path();
+        wpath = wpath / "models" / "df3_weights";
+        if (!engine.load_weights(wpath.string())) {
+            std::cerr << "Weights load failed (looked in " << wpath.string() << ")" << std::endl;
             return 1;
         }
 

@@ -3,11 +3,13 @@
 #include <vector>
 #include <string>
 
-namespace sa::domain {
+namespace silence_arc::infrastructure {
 
 /**
- * @brief Domain interface for Neural Network inference.
- * Following Clean Architecture, this interface remains pure and decoupled from SYCL specifics.
+ * @brief Infrastructure-internal abstraction for the DeepFilterNet neural-network
+ * inference engine. It is the NN half of the Bridge with GPUAccelerator, private
+ * to the SYCL adapter -- not a backend-selection seam (that is
+ * domain::INoiseSuppressor).
  */
 class NeuralNetworkModel {
 public:
@@ -45,4 +47,4 @@ public:
     virtual size_t get_df_coefs_count() const = 0;
 };
 
-} // namespace sa::domain
+} // namespace silence_arc::infrastructure

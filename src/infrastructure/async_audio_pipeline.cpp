@@ -38,6 +38,13 @@ void AsyncAudioPipeline::SetProcessCallback(domain::IAudioPipeline::ProcessCallb
 void AsyncAudioPipeline::PushInput(const domain::AudioBuffer& buffer) {
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
+        const size_t cap = max_queue_depth_.load(std::memory_order_relaxed);
+        while (input_queue_.size() >= cap) {
+            // Producer outran the worker: drop the STALEST input so we track the
+            // live signal instead of accumulating latency.
+            input_queue_.pop_front();
+            frames_dropped_.fetch_add(1, std::memory_order_relaxed);
+        }
         input_queue_.push_back(buffer);
     }
     cv_.notify_one();
@@ -46,8 +53,8 @@ void AsyncAudioPipeline::PushInput(const domain::AudioBuffer& buffer) {
 bool AsyncAudioPipeline::PopOutput(domain::AudioBuffer& buffer) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     if (output_queue_.empty()) return false;
-    buffer = output_queue_.front();
-    output_queue_.erase(output_queue_.begin());
+    buffer = std::move(output_queue_.front());
+    output_queue_.pop_front();
     return true;
 }
 
@@ -57,11 +64,11 @@ void AsyncAudioPipeline::ThreadLoop() {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
             cv_.wait(lock, [this] { return !is_running_ || !input_queue_.empty(); });
-            
+
             if (!is_running_) break;
-            
-            input = input_queue_.front();
-            input_queue_.erase(input_queue_.begin());
+
+            input = std::move(input_queue_.front());
+            input_queue_.pop_front();
         }
 
         domain::AudioBuffer output;
@@ -79,7 +86,13 @@ void AsyncAudioPipeline::ThreadLoop() {
 
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
-            output_queue_.push_back(output);
+            const size_t cap = max_queue_depth_.load(std::memory_order_relaxed);
+            while (output_queue_.size() >= cap) {
+                // Consumer (audio callback) fell behind: drop the stalest output.
+                output_queue_.pop_front();
+                frames_dropped_.fetch_add(1, std::memory_order_relaxed);
+            }
+            output_queue_.push_back(std::move(output));
         }
     }
 }
