@@ -33,9 +33,14 @@ build.ninja
 .DS_Store
 Thumbs.db
 
-# Logs and tests
-*.txt
+# Logs and generated text output
+# NOTE: do NOT blanket-ignore *.txt -- it silently swallows CMakeLists.txt and
+# any other legitimate tracked .txt. Ignore only generated artifacts.
 *.log
+*_log.txt
+*_output.txt
+bench_results*.txt
+latency_*.txt
 
 # Hardware-specific SYCL golden capture for test_kernel_correctness
 tests/samples/No-Noise_sycl_golden.bin
