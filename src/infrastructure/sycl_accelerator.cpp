@@ -1,5 +1,6 @@
 #include "silence_arc/infrastructure/sycl_accelerator.h"
 #include "silence_arc/infrastructure/onednn_inference_engine.h"
+#include "silence_arc/infrastructure/log.h"
 #include <dnnl_sycl.hpp>
 #include <iostream>
 #include <fstream>
@@ -99,7 +100,7 @@ bool SYCLAccelerator::initialize() {
         m_queue = sycl::queue(device, sycl::property::queue::in_order());
         m_device_name = device.get_info<sycl::info::device::name>();
 
-        std::cout << "[INFO] SYCL Initialized on: " << m_device_name << std::endl;
+        SA_LOG_INFO("[INFO] SYCL Initialized on: " << m_device_name);
 
         m_dnnl_engine = std::make_unique<dnnl::engine>(dnnl::sycl_interop::make_engine(m_queue->get_device(), m_queue->get_context()));
         m_dnnl_stream = std::make_unique<dnnl::stream>(dnnl::sycl_interop::make_stream(*m_dnnl_engine, *m_queue));
@@ -110,7 +111,7 @@ bool SYCLAccelerator::initialize() {
         weights_path = weights_path / "models" / "df3_weights";
 
         if (!m_engine->load_weights(weights_path.string())) return false;
-        std::cout << "[SUCCESS] Neural Engine ready." << std::endl;
+        SA_LOG_INFO("[SUCCESS] Neural Engine ready.");
 
         setup_kernels();
         return true;
@@ -189,7 +190,7 @@ void SYCLAccelerator::setup_kernels() {
         std::vector<float> inv_fb_weights(m_nb_erb * m_freq_size);
         inv_fb_file.read(reinterpret_cast<char*>(inv_fb_weights.data()), inv_fb_weights.size() * sizeof(float));
         q.memcpy(m_erb_inv_fb_matrix, inv_fb_weights.data(), inv_fb_weights.size() * sizeof(float)).wait();
-        std::cout << "[INFO] Inverse Filterbank loaded." << std::endl;
+        SA_LOG_INFO("[INFO] Inverse Filterbank loaded.");
     }
 }
 

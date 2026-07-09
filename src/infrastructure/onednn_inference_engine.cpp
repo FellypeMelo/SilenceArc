@@ -1,4 +1,5 @@
 #include "silence_arc/infrastructure/onednn_inference_engine.h"
+#include "silence_arc/infrastructure/log.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -15,7 +16,7 @@ OneDNNInferenceEngine::OneDNNInferenceEngine(sycl::queue& queue, dnnl::engine& e
     : m_queue(queue), m_engine(engine), m_stream(stream) {}
 
 bool OneDNNInferenceEngine::load_weights(const std::string& weights_path) {
-    std::cout << "[INFO] Loading weights from: " << weights_path << std::endl;
+    SA_LOG_INFO("[INFO] Loading weights from: " << weights_path);
     std::string metadata_path = weights_path + "/metadata.json";
     std::ifstream f(metadata_path);
     if (!f.is_open()) return false;
@@ -35,7 +36,7 @@ bool OneDNNInferenceEngine::load_weights(const std::string& weights_path) {
             bin_f.read(reinterpret_cast<char*>(buffer.data()), num_elements * sizeof(float));
             m_weights[name] = std::move(buffer);
         }
-        std::cout << "[SUCCESS] Loaded " << m_weights.size() << " weight tensors." << std::endl;
+        SA_LOG_INFO("[SUCCESS] Loaded " << m_weights.size() << " weight tensors.");
         setup_encoder();
         setup_erb_decoder();
         setup_df_decoder();
@@ -452,7 +453,7 @@ void OneDNNInferenceEngine::add_grouped_linear(std::vector<OneDNNLayer>& sequenc
     int out_per_group = w_data.size() / (groups * in_per_group);
     int out_channels = groups * out_per_group;
 
-    std::cout << "[DEBUG] GroupedLinear(" << weight_name << "): in_feat=" << in_features << ", in_pg=" << in_per_group << ", out_pg=" << out_per_group << ", out_channels=" << out_channels << ", dims=" << src_dims.size() << std::endl;
+    SA_LOG_DEBUG("GroupedLinear(" << weight_name << "): in_feat=" << in_features << ", in_pg=" << in_per_group << ", out_pg=" << out_per_group << ", out_channels=" << out_channels << ", dims=" << src_dims.size());
 
     try {
         memory conv_src = input;
@@ -510,11 +511,13 @@ void OneDNNInferenceEngine::add_binary_add(std::vector<OneDNNLayer>& sequence,
     auto a_dims = a_md.get_dims();
     auto b_dims = b_md.get_dims();
 
-    std::cout << "[DEBUG] BinaryAdd: A=";
-    for(auto d : a_dims) std::cout << d << " ";
-    std::cout << "| B=";
-    for(auto d : b_dims) std::cout << d << " ";
-    std::cout << std::endl;
+    if (verbose_logging_enabled()) {
+        std::cout << "[DEBUG] BinaryAdd: A=";
+        for(auto d : a_dims) std::cout << d << " ";
+        std::cout << "| B=";
+        for(auto d : b_dims) std::cout << d << " ";
+        std::cout << std::endl;
+    }
     auto dims = a_md.get_dims();
 
     auto get_std_tag = [](size_t n) {
@@ -779,7 +782,7 @@ void OneDNNInferenceEngine::shift_time_history(dnnl::memory& history_mem, const 
 }
 
 void OneDNNInferenceEngine::setup_encoder() {
-    std::cout << "[INFO] Building Full Encoder..." << std::endl;
+    SA_LOG_INFO("[INFO] Building Full Encoder...");
     // H holds a rolling 3-frame causal window (t-2,t-1,t), not just the current
     // frame: erb_conv0 has kernel_size=(3,3) with the time axis fully causal
     // (pad top=2,bottom=0 in the reference), which requires 2 real past frames,
@@ -845,11 +848,11 @@ void OneDNNInferenceEngine::setup_encoder() {
     memory lsnr;
     add_linear(m_encoder_layers, "enc.lsnr_fc.0.weight", "enc.lsnr_fc.0.bias", emb_out, lsnr, 1);
     add_sigmoid(m_encoder_layers, lsnr, lsnr);
-    std::cout << "[SUCCESS] Full Encoder ready." << std::endl;
+    SA_LOG_INFO("[SUCCESS] Full Encoder ready.");
 }
 
 void OneDNNInferenceEngine::setup_erb_decoder() {
-    std::cout << "[INFO] Building ERB Decoder..." << std::endl;
+    SA_LOG_INFO("[INFO] Building ERB Decoder...");
     memory emb = safe_at(m_persistent_mems, "encoder_emb_out");
     memory dec_emb_out;
     // emb_num_layers=3 in config.ini -> ErbDecoder's GRU needs num_layers=2 (emb_num_layers-1);
@@ -906,11 +909,11 @@ void OneDNNInferenceEngine::setup_erb_decoder() {
     add_batchnorm(m_erb_decoder_layers, "erb_dec.conv0_out.1", current, current);
     add_sigmoid(m_erb_decoder_layers, current, current);
     m_persistent_mems["erb_mask_out"] = current;
-    std::cout << "[SUCCESS] ERB Decoder ready." << std::endl;
+    SA_LOG_INFO("[SUCCESS] ERB Decoder ready.");
 }
 
 void OneDNNInferenceEngine::setup_df_decoder() {
-    std::cout << "[INFO] Building DF Decoder..." << std::endl;
+    SA_LOG_INFO("[INFO] Building DF Decoder...");
     memory emb = safe_at(m_persistent_mems, "encoder_emb_out");
     memory dec_emb_out;
     
@@ -976,7 +979,7 @@ void OneDNNInferenceEngine::setup_df_decoder() {
     m_df_decoder_layers.push_back(final_sum);
     
     m_persistent_mems["df_coefs_out"] = df_linear_out;
-    std::cout << "[SUCCESS] DF Decoder ready." << std::endl;
+    SA_LOG_INFO("[SUCCESS] DF Decoder ready.");
 }
 
 void OneDNNInferenceEngine::infer_erb(const float* erb_features, float* output_mask) {
