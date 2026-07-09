@@ -7,14 +7,12 @@
 #include "silence_arc/infrastructure/sycl_accelerator.h"
 #include "silence_arc/infrastructure/sycl_telemetry_provider.h"
 #include "silence_arc/domain/audio_stream_buffer.h"
+#include "silence_arc/domain/audio_metrics.h"
 #include <iostream>
 #include <filesystem>
 #include <windows.h>
 #include <thread>
 #include <chrono>
-#include <cmath>
-#include <vector>
-#include <algorithm>
 
 int main() {
     std::cout << "Starting Silence Arc..." << std::endl;
@@ -88,18 +86,17 @@ int main() {
 
         // Real signal metering, computed here on the worker thread (never on the
         // RT device callback). RMS of f32 samples in [-1,1] already maps to the
-        // 0..1 range the ProgressBar meters expect.
-        auto rms = [](const std::vector<float>& d) -> float {
-            if (d.empty()) return 0.0f;
-            double acc = 0.0;
-            for (float s : d) acc += static_cast<double>(s) * s;
-            return static_cast<float>(std::sqrt(acc / static_cast<double>(d.size())));
-        };
-        const float in_level = std::min(rms(frame_in.data), 1.0f);
-        const float out_level = std::min(rms(frame_out.data), 1.0f);
+        // 0..1 range the ProgressBar meters expect; clamp to guard against clipped
+        // input. NOTE: std::min is avoided on purpose -- <windows.h> defines a min()
+        // macro that mangles it.
+        float in_level = silence_arc::domain::AudioMetrics::CalculateRMS(frame_in.data);
+        float out_level = silence_arc::domain::AudioMetrics::CalculateRMS(frame_out.data);
+        if (in_level > 1.0f) in_level = 1.0f;
+        if (out_level > 1.0f) out_level = 1.0f;
         float reduction_db = 0.0f;
-        if (ui.GetState().noise_suppression_enabled && out_level > 1e-6f && in_level > out_level) {
-            reduction_db = 20.0f * std::log10(in_level / out_level);
+        if (ui.GetState().noise_suppression_enabled) {
+            reduction_db = silence_arc::domain::AudioMetrics::CalculateDbReduction(frame_in.data, frame_out.data);
+            if (reduction_db < 0.0f) reduction_db = 0.0f; // output louder than input => no reduction
         }
         ui.UpdateSignalLevels(in_level, out_level, reduction_db);
     });
