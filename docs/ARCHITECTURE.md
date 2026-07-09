@@ -1,73 +1,65 @@
-# SilenceArc: Technical Architecture
+# ARCHITECTURE — SilenceArc
 
-SilenceArc follows a modular, layer-based architecture designed for high-performance audio processing and low-latency GPU inference.
+Pipeline de áudio real-time. 48kHz, mono, frames de 480 samples (10ms de hop). Duas engines, uma seam.
 
-## System Overview
+## Visão geral
 
-The application is divided into three primary technological domains:
-1.  **C++ Host (Infrastructure & UI):** Manages Windows Audio APIs (WASAPI), the GUI (Dear ImGui), and the native SYCL/oneDNN engine.
-2.  **Rust Core (DeepFilterNet):** The CPU fallback — `tract`/ONNX inference plus weight management, exposed to the host through a C API.
-3.  **SYCL/oneAPI Backend (GPU):** Executes the STFT, feature extraction, neural network, and deep filtering on Intel Arc hardware.
+3 domínios:
+1. **C++ Host:** WASAPI (miniaudio), GUI (ImGui/DX11), threading, seleção de backend.
+2. **GPU (SYCL/oneAPI):** STFT + features + rede DFN3 + deep filtering + ISTFT. Tudo na Arc. Sem OpenVINO.
+3. **Rust core (`df.dll`):** fallback CPU. DeepFilterNet3 via tract/ONNX, exposto por C-API (`deep_filter.h`).
 
-## Layered Architecture
+## Pipeline (captura → modelo → saída)
 
-Following **Clean Architecture** principles, the code is organized into distinct layers. Dependencies point inward: infrastructure depends on domain, never the reverse.
-
-### 1. Domain Layer (`include/silence_arc/domain/`)
-The domain holds only technology-agnostic contracts and value types — no SYCL, oneDNN, or WASAPI headers appear here.
--   **`INoiseSuppressor` (`noise_suppressor.h`):** The single backend-selection seam. Both the GPU and CPU engines implement it; `main.cpp` picks one at runtime.
--   **`IAudioPipeline` (`audio_pipeline.h`):** Abstract capture→process→playback pipeline contract.
--   **`ITelemetryProvider` (`telemetry_provider.h`):** Latency/utilization/signal-level readout contract.
--   **`AudioStreamBuffer`:** Lock-light circular buffer for frame-based audio streams.
--   **`AudioMetrics`:** dB-reduction / RMSE helpers used by the parity and E2E tests.
--   **`UIState`:** Plain cross-thread UI state (enable flag, attenuation limit, device selection).
-
-### 2. Infrastructure Layer (`src/infrastructure/`, `include/silence_arc/infrastructure/`)
-Two concrete `INoiseSuppressor` implementations, plus the device and threading plumbing:
--   **`SyclNoiseSuppressor`:** GPU backend. Delegates to the SYCL-internal engine below.
--   **`DeepFilterAdapter`:** CPU fallback. The C-API bridge to the Rust `libDF` (`tract`/ONNX) model.
--   **`MiniaudioPipeline`:** Owns the real-time WASAPI duplex device and its audio callback.
--   **`AsyncAudioPipeline`:** Runs `INoiseSuppressor::ProcessFrame()` on a dedicated
-    `THREAD_PRIORITY_TIME_CRITICAL` worker with bounded, drop-oldest queues, so the
-    heavy GPU/NN work never blocks the real-time audio callback thread.
--   **SYCL-internal Bridge (private to `SyclNoiseSuppressor`, NOT a backend seam):**
-    -   **`GPUAccelerator` / `SYCLAccelerator`:** the DSP half — STFT, ERB/DF feature
-        extraction, deep filtering, and ISTFT via oneMKL + SYCL kernels on a single
-        in-order USM queue.
-    -   **`NeuralNetworkModel` / `OneDNNInferenceEngine`:** the NN half — maps the
-        DeepFilterNet3 topology (ERB stage + DF stage) onto oneDNN primitives.
-
-### 3. Presentation Layer (`src/main.cpp` & `ui_manager.cpp`)
--   **UI Manager:** Dear ImGui rendering and user-interaction state.
--   **Telemetry:** Visualizes real-time latency, GPU utilization, and signal levels.
-
-## Data Flow & Interop
-
-The WASAPI callback is a thin, non-blocking shim: it frames the input, hands whole
-frames to the async worker, and drains finished frames back to the device. All heavy
-processing happens off the audio thread.
-
-```mermaid
-graph TD
-    A[Mic Input / WASAPI] --> B[MiniaudioPipeline callback - thin shim]
-    B -- push frame --> C[AsyncAudioPipeline queue]
-    C --> D[TIME_CRITICAL worker thread]
-    D --> E{INoiseSuppressor - selected at runtime}
-    E -- GPU --> F[SyclNoiseSuppressor]
-    E -- CPU fallback --> G[DeepFilterAdapter]
-    F --> H[SYCLAccelerator: STFT + features + filter + ISTFT]
-    H --> I[OneDNNInferenceEngine: ERB + DF stages]
-    I -- USM zero-copy --> J[Intel Arc GPU]
-    G -- C-API --> K[Rust libDF / tract]
-    F --> L[Output queue]
-    G --> L
-    L -- drained by shim --> B
-    B --> M[Speaker Output]
+```
+Mic (WASAPI shared, f32, mono, 48kHz)
+  └─ MiniaudioPipeline::DataCallback  ← thread real-time. SHIM fino, nunca processa.
+       ├─ AudioStreamBuffer in_buffer (framing p/ blocos de 480)
+       ├─ AsyncAudioPipeline::PushInput (fila bounded, depth 8, drop-oldest)
+       │     └─ Worker thread TIME_CRITICAL
+       │           └─ INoiseSuppressor::ProcessFrame(480 in, 480 out)
+       │                 ├─ GPU: SyclNoiseSuppressor → sycl_process()
+       │                 └─ CPU: DeepFilterAdapter → df_process_frame()
+       ├─ AsyncAudioPipeline::PopOutput → out_buffer
+       └─ escreve exatamente frameCount no pOutput (falta = zero-fill)
+Speaker (mesmo device duplex)
 ```
 
-## Bridging C++ and SYCL
-SilenceArc uses **Unified Shared Memory (USM)** to eliminate host↔device copy overhead.
-`SYCLAccelerator` owns a single **in-order** SYCL queue, so kernels auto-chain device-side
-and the hot path collapses to essentially one terminal host sync before the mandatory
-output copy — see ADR-002 for the two-tier abstraction that keeps this SYCL/oneDNN code
-isolated from the domain seam.
+NÃO existe device virtual. Entrada = mic real, saída = speaker real. Discord/OBS não enxergam o áudio limpo. Gap conhecido (STATE.md).
+
+## Caminho GPU (SYCLAccelerator::process_frame)
+
+Fila SYCL in-order, buffers USM device. Um sync terminal por frame.
+
+1. **Análise:** rola janela de 960 (hop 480), aplica janela sin², FFT real via oneMKL DFT (wnorm embutido no FORWARD_SCALE).
+2. **Features:** power spectrum (481 bins) → 32 bandas ERB (matriz `erb_fb.bin`); normalização EMA α=0.99 no HOST (log10 ERB mean-norm + unit-norm complexa dos 96 bins DF).
+3. **Inferência:** `OneDNNInferenceEngine::infer()` — encoder + ERB decoder + DF decoder em primitivas oneDNN (conv2d, lbr_gru, deconv, binary, concat) + kernels SYCL custom p/ permutes TNC↔NCHW. Estados persistentes: GRU states, janelas causais rolantes (erb 3 frames, df 3, c0 5). 133 tensores de `models/df3_weights/`.
+4. **Filtro:** mask ERB → 481 bins (matriz inversa `mask_erb_inv_fb.bin`) × spectrum; deep filtering ordem 5 (960 coefs complexos) nos 96 bins baixos; histórico espectral rolado no device.
+5. **Síntese:** IFFT + overlap-add com janela → 480 samples out.
+
+## Caminho CPU (fallback)
+
+`DeepFilterAdapter` → `df.dll` (Rust, vendorado em `DeepFilterNet/`). Modelo `DeepFilterNet3_onnx.tar.gz`. Mesma interface `INoiseSuppressor`.
+
+## Camadas (Clean Architecture)
+
+- **domain/** (`include/silence_arc/domain/`): só contratos + tipos. Zero SYCL/oneDNN/WASAPI.
+  - `INoiseSuppressor` — seam ÚNICA de seleção de backend (ADR-002).
+  - `IAudioPipeline`, `ITelemetryProvider`, `AudioStreamBuffer`, `AudioMetrics`, `UIState`.
+- **infrastructure/**: implementações.
+  - `MiniaudioPipeline` (device duplex + callback), `AsyncAudioPipeline` (worker + filas bounded),
+    `MiniaudioDeviceManager` (enumeração), `SyclTelemetryProvider` (Level Zero), `UIManager` (ImGui/DX11 + system tray).
+  - Bridge interno da GPU (privado, NÃO é seam): `GPUAccelerator`/`SYCLAccelerator` (DSP) + `NeuralNetworkModel`/`OneDNNInferenceEngine` (NN).
+- **presentation:** `main.cpp` (composição, loop ~60fps) + `ui_manager.cpp`.
+
+## Threads
+
+| Thread | Papel | Regra |
+|---|---|---|
+| Audio callback (miniaudio) | shim push/pop | nunca bloqueia, nunca infere |
+| Worker (AsyncAudioPipeline) | ProcessFrame GPU/CPU | TIME_CRITICAL; filas drop-oldest, depth 8 |
+| UI (main) | ImGui, telemetria, troca de device | ~60fps; escreve UIState lido pelo worker |
+
+## Memória / sync
+
+USM device em tudo no hot path. Fila in-order = kernels auto-encadeiam; host só espera onde PRECISA ler: cópia de features p/ host (EMA + parte da normalização rodam no host), cópia mask/coefs pós-inferência, cópia final do output. Detalhe das primitivas: `docs/ENGINE.md`. Decisões: `docs/DECISIONS.md` + `docs/adr/`.

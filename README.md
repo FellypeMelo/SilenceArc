@@ -1,140 +1,78 @@
-# SilenceArc: Native GPU-Accelerated Audio Intelligence
+# SilenceArc
 
-SilenceArc is a high-performance, real-time noise suppression and voice enhancement application designed specifically for **Intel Arc GPUs**. By bypassing high-level runtimes like OpenVINO and communicating directly with the hardware via **SYCL** and **oneDNN**, SilenceArc achieves single-digit millisecond latency and extreme resource efficiency.
+Supressão de ruído em tempo real p/ **GPUs Intel Arc**. Equivalente ao RTX Voice, mas nativo Intel. Parte da **Arc Suite**.
 
-## 🚀 Key Features
+**O quê:** captura o mic, roda **DeepFilterNet3** na Arc GPU, devolve voz limpa. Latência de processamento ~4-5ms por frame de 10ms.
 
--   **Native Intel Arc Acceleration:** Leverages Xe Matrix eXtensions (XMX) for lightning-fast AI inference.
--   **Direct oneAPI Integration:** Built using pure SYCL and oneDNN primitives—no Python, no heavy wrappers.
--   **Zero-Copy Memory:** Utilizes Unified Shared Memory (USM) for maximum throughput between CPU and GPU.
--   **Real-Time Perceptual Quality:** Integrates the state-of-the-art **DeepFilterNet3** model for superior voice clarity.
--   **Ultra-Low Latency:** Optimized for live streaming, gaming, and professional vocal monitoring.
--   **Minimalist GUI:** Lightweight interface with real-time telemetry, signal levels, and system tray integration.
+**Por quê assim:** sem OpenVINO, sem ONNX Runtime no caminho GPU. Engine própria em **SYCL + oneDNN + oneMKL** — 133 tensores do DFN3 mapeados 1:1 em primitivas nativas, USM zero-copy, fila in-order com um sync por frame. Controle total do hot path, DSP custom entrelaçado com a rede. Racional completo: [docs/PHILOSOPHY.md](./docs/PHILOSOPHY.md) e [docs/DECISIONS.md](./docs/DECISIONS.md).
 
----
+## Estado atual (honesto)
 
-## 🛠️ Tech Stack
+- Funciona: mic real → supressão na GPU → speaker real (duplex WASAPI shared, mono 48kHz).
+- Fallback CPU automático: Rust `df.dll` (tract/ONNX) quando não há GPU SYCL.
+- Bench Arc B580: avg 3.86ms, p99 4.85ms por frame (budget 10ms). Ver [docs/BENCHMARKS.md](./docs/BENCHMARKS.md).
+- **Falta** (backlog em [STATE.md](./STATE.md)): device de áudio VIRTUAL (Discord/OBS ainda não enxergam a saída limpa), medição end-to-end, dereverb, echo cancel.
 
--   **Core Language:** C++ (C++20)
--   **GPU Backend:** SYCL / Intel oneAPI
--   **Neural Primitives:** oneDNN (oneAPI Deep Neural Network Library)
--   **DSP Math:** oneMKL (oneAPI Math Kernel Library)
--   **Audio Pipeline:** miniaudio (WASAPI / ASIO)
--   **Model Logic:** DeepFilterNet3 (Rust-based core with C++ Adapter)
--   **UI Framework:** Dear ImGui (DX11/DX12 backend)
--   **Build System:** CMake + Ninja
+## Matriz de GPU
 
----
+| GPU | Status | Nota |
+|---|---|---|
+| Arc B580 (Battlemage) | ✅ testado | bench oficial; p99 4.85ms |
+| Arc B-Series (outras) | ✔️ esperado | mesma arquitetura, sem bench registrado |
+| Arc A-Series (Alchemist) | ✔️ esperado | suportado por SYCL/oneDNN; sem bench registrado |
+| iGPU Intel Xe (Meteor Lake+) | ❓ não testado | detector procura nome "Arc"; iGPU cai no default selector |
+| Sem GPU Intel | ⚠️ fallback CPU | df.dll (Rust/tract), qualidade igual, latência maior |
+| NVIDIA / AMD | ❌ | fora de escopo — use RTX Voice / AMD NR |
 
-## 📋 Prerequisites
+## Stack
 
-To build and run SilenceArc, you need the following:
+C++20 (icx) · SYCL/oneAPI · oneDNN · oneMKL DFT · Level Zero (telemetria) · miniaudio (WASAPI) · Dear ImGui (DX11) · Rust df.dll (fallback) · CMake + Ninja.
 
-1.  **Hardware:** An Intel Arc GPU (B-Series/Battlemage or A-Series/Alchemist).
-2.  **Compiler:** `icx` (Intel LLVM C++ Compiler) from the **Intel oneAPI Base Toolkit** (2024.0+).
-3.  **Libraries:** oneDNN and oneMKL (included in oneAPI Base Toolkit).
-4.  **CMake:** Version 3.20 or newer.
-5.  **Rust:** (Optional) Only required if you need to recompile the `df.dll` core.
+## Quickstart
 
----
+Pré-requisitos: GPU Arc + driver, **Intel oneAPI Base Toolkit 2024+** (icx, oneDNN, oneMKL), **Level Zero SDK**, CMake ≥3.20, Ninja. Rust só se for recompilar `df.dll`.
 
-## 🏁 Getting Started
-
-### 1. Clone the Repository
-```bash
+```powershell
 git clone https://github.com/FellypeMelo/SilenceArc.git
 cd SilenceArc
-```
+.\setup_intel.bat          # ambiente oneAPI
 
-### 2. Configure Environment
-Initialize the oneAPI environment variables (required for the compiler and libraries):
-```powershell
-.\setup_intel.bat
-```
-
-### 3. Build the Application
-We recommend using the Ninja generator for high-speed builds:
-```bash
-mkdir build
-cd build
+mkdir build; cd build
 cmake -G "Ninja" -DCMAKE_CXX_COMPILER=icx -DCMAKE_C_COMPILER=icx ..
 cmake --build . --config Release
-```
 
-### 4. Run SilenceArc
-```bash
 cd ..
-.\run.bat
+.\run.bat                  # abre a GUI; escolha mic e saída
 ```
 
----
-
-## 🏗️ Architecture Overview
-
-SilenceArc follows a **Clean Architecture** approach, separating hardware-specific acceleration from high-level application logic.
-
-### Directory Structure
-```
-├── docs/               # In-depth technical documentation
-├── include/            # C++ Header files
-│   └── silence_arc/
-│       ├── domain/     # Core interfaces (Audio, GPU, NN)
-│       └── infrastructure/ # Implementations (SYCL, oneDNN, miniaudio)
-├── src/                # Implementation files
-├── models/             # DeepFilterNet3 weights and metadata
-├── scripts/            # Utility scripts (Weight export, etc.)
-├── tests/              # SYCL and NN unit tests
-└── DeepFilterNet/      # Submodule for the Rust perceptual core
+Verificar instalação:
+```powershell
+.\build\test_nn_layers.exe          # carrega 133 tensores + 1 inferência na GPU
+ctest --test-dir build              # suíte completa (14 testes)
+.\build\bench_pipeline_latency.exe  # latência per-frame (p50/p90/p99)
 ```
 
-### Data Flow
-1.  **Audio Capture:** `miniaudio` captures raw buffers via WASAPI/ASIO.
-2.  **Analysis:** Signal is windowed and converted to frequency domain via **oneMKL DFT**.
-3.  **Inference:** The **OneDNNInferenceEngine** executes the 133-tensor pipeline on the **Arc GPU**.
-4.  **Permutation:** Custom SYCL kernels handle layout transitions between sequential (TNC) and spatial (NCHW) memory.
-5.  **Synthesis:** ISTFT and Overlap-Add reconstruction via SYCL kernels.
-6.  **Playback:** Processed audio is pushed back to the output device.
+## Uso
 
----
+- **Input/Output:** mic e speaker reais. Modo shared WASAPI.
+- **Noise Suppression:** toggle liga/desliga; **Attenuation Limit** 20dB soa natural, 100dB silêncio absoluto (efetivo no backend CPU; GPU: fixo por enquanto).
+- **Telemetria:** latência de processamento e utilização de GPU (Level Zero) em tempo real.
+- **Tray:** minimiza pra bandeja e continua rodando.
 
-## 🧠 The Engine: Why Native SYCL?
+## Estrutura
 
-Most noise suppression tools use generic runtimes like OpenVINO. SilenceArc chooses a harder, more powerful path:
-
--   **Layout Mastery:** We wrote custom kernels to handle sequential GRU outputs that oneDNN's standard reorder couldn't process efficiently on GPUs.
--   **Weight Mapping:** Every tensor from the DeepFilterNet3 PyTorch model is mapped bit-exactly to a oneDNN primitive.
--   **Total Control:** By owning the SYCL queue, we can interleave custom DSP logic with neural layers without pipeline stalls.
-
-For more details, see the [Whitepaper](./WHITE_PAPER.md) or the [Engine Deep-Dive](./docs/ENGINE.md).
-
----
-
-## 🎮 Usage Guide
-
-### Interface Basics
--   **Input/Output:** Select your microphone and speakers. Note that the app uses **Exclusive Mode** for ultra-low latency.
--   **Attenuation Limit:** Sets the noise floor. 20dB sounds natural; 100dB provides absolute silence.
--   **Telemetry:** Monitor your real-time **GPU Utilization** and **Processing Latency**.
-
-### System Tray
-Minimize the application to the tray to keep it running in the background while you focus on your work or game.
-
----
-
-## 🧪 Verification & Testing
-
-To ensure your hardware is fully compatible, run the neural layer verification test:
-```bash
-.\build\test_nn_layers.exe
 ```
-This test initializes the SYCL engine, loads 133 tensors, and executes a full inference cycle on your GPU.
+include/silence_arc/domain/   contratos (INoiseSuppressor, IAudioPipeline...)
+include/silence_arc/infrastructure/ + src/infrastructure/   implementações
+models/df3_weights/           133 tensores .bin + metadata.json + filterbanks
+DeepFilterNet/                fork vendorado do core Rust (fallback CPU)
+scripts/export_df3_weights.py exporta checkpoint PyTorch → .bin
+tests/                        unit + e2e + paridade GPUvsCPU + bench
+docs/                         ARCHITECTURE, ENGINE, API, DECISIONS, BENCHMARKS, ADRs
+```
 
----
+Docs de trabalho: [STATE.md](./STATE.md) (estado+backlog) · [QUALITY.md](./QUALITY.md) (gates) · [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) (pipeline) · [WHITE_PAPER.md](./WHITE_PAPER.md).
 
-## 📄 License
+## Licença
 
-SilenceArc is licensed under the **Apache License 2.0**. See the [LICENSE](./LICENSE) file for details.
-
----
-
-**SilenceArc** — Silence the noise, amplify the voice. Built for the Intel Arc era.
+Apache 2.0 — ver [LICENSE](./LICENSE). Núcleo DeepFilterNet: MIT/Apache-2.0 (ver `DeepFilterNet/`).
