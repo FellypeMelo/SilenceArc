@@ -134,7 +134,6 @@ BenchmarkResult BenchmarkHarness::RunDeepFilterNetSimulation(int num_frames) {
     // DeepFilterNet uses larger frequency domain processing
     const int num_bins = 481;
     const int num_taps = 5;
-    const int conv_channels = 64;
 
     sycl::float2* d_spec = sycl::malloc_device<sycl::float2>(num_bins, queue_);
     sycl::float2* d_coeffs = sycl::malloc_device<sycl::float2>(num_bins * num_taps, queue_);

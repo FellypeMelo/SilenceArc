@@ -346,7 +346,8 @@ void UIManager::SetTransparency(float alpha) {
 }
 
 void UIManager::CreateTrayIcon() {
-  NOTIFYICONDATAW nid = { sizeof(nid) };
+  NOTIFYICONDATAW nid = {};
+  nid.cbSize = sizeof(nid);
   nid.hWnd = static_cast<HWND>(hwnd_);
   nid.uID = ID_TRAY_APP_ICON;
   nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
@@ -357,7 +358,8 @@ void UIManager::CreateTrayIcon() {
 }
 
 void UIManager::DestroyTrayIcon() {
-  NOTIFYICONDATAW nid = { sizeof(nid) };
+  NOTIFYICONDATAW nid = {};
+  nid.cbSize = sizeof(nid);
   nid.hWnd = static_cast<HWND>(hwnd_);
   nid.uID = ID_TRAY_APP_ICON;
   Shell_NotifyIconW(NIM_DELETE, &nid);

@@ -62,8 +62,8 @@ void TestTelemetryUpdate() {
     data.memory_footprint_mb = 256.0f;
     
     ui.UpdateTelemetry(data);
-    
-    auto& state = ui.GetState();
+
+    [[maybe_unused]] auto& state = ui.GetState();
     assert(state.telemetry.gpu_utilization == 0.42f);
     assert(state.telemetry.processing_latency_ms == 5.5f);
     assert(state.telemetry.memory_footprint_mb == 256.0f);
@@ -97,8 +97,8 @@ void TestSignalFeedback() {
     UIManager ui;
     
     ui.UpdateSignalLevels(0.75f, 0.35f, 15.0f); // input, output, reduction
-    
-    auto& state = ui.GetState();
+
+    [[maybe_unused]] auto& state = ui.GetState();
     assert(state.input_level == 0.75f);
     assert(state.output_level == 0.35f);
     assert(state.db_reduction == 15.0f);

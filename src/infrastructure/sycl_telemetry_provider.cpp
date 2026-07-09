@@ -93,7 +93,8 @@ void SyclTelemetryProvider::InitializeSysman() {
             std::vector<zes_engine_handle_t> hEngines(numEngines);
             if (zesDeviceEnumEngineGroups(hSysmanDevice, &numEngines, hEngines.data()) == ZE_RESULT_SUCCESS) {
                 for (auto hEngine : hEngines) {
-                    zes_engine_properties_t props = {ZES_STRUCTURE_TYPE_ENGINE_PROPERTIES};
+                    zes_engine_properties_t props{};
+                    props.stype = ZES_STRUCTURE_TYPE_ENGINE_PROPERTIES;
                     if (zesEngineGetProperties(hEngine, &props) == ZE_RESULT_SUCCESS) {
                         if (props.type == ZES_ENGINE_GROUP_ALL) {
                             hEngineAll = hEngine;
@@ -137,7 +138,7 @@ void SyclTelemetryProvider::Update() {
 
     // 1. GPU Utilization
     if (hEngineAll) {
-        zes_engine_stats_t stats = {0};
+        zes_engine_stats_t stats{};
         if (zesEngineGetActivity(hEngineAll, &stats) == ZE_RESULT_SUCCESS) {
             if (last_timestamp_ != 0 && stats.timestamp > last_timestamp_) {
                 uint64_t delta_active = stats.activeTime - last_engine_stats_.activeTime;
@@ -155,7 +156,8 @@ void SyclTelemetryProvider::Update() {
 
     // 2. VRAM Usage
     if (hMainMemory) {
-        zes_mem_state_t state = {ZES_STRUCTURE_TYPE_MEM_STATE};
+        zes_mem_state_t state{};
+        state.stype = ZES_STRUCTURE_TYPE_MEM_STATE;
         if (zesMemoryGetState(hMainMemory, &state) == ZE_RESULT_SUCCESS) {
             if (state.size > 0) {
                 uint64_t used = state.size - state.free;

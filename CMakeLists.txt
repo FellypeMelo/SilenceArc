@@ -39,12 +39,19 @@ add_library(imgui_lib STATIC
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
 )
-target_include_directories(imgui_lib PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_include_directories(imgui_lib SYSTEM PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(imgui_lib PUBLIC d3d11 dxgi)
+# Vendored third party we do not maintain: silence its own compiler warnings so
+# they do not drown out warnings from our code under -Wall/-Wextra.
+if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+    target_compile_options(imgui_lib PRIVATE -w)
+endif()
 
 include_directories(include)
 include_directories(tests) # For sycl_test_harness.h
-include_directories(third_party/miniaudio)
+# miniaudio is a large single-header third party; treat as SYSTEM so -Wall/-Wextra
+# do not flood us with warnings from code we do not own.
+include_directories(SYSTEM third_party/miniaudio)
 
 # Level Zero SDK (installed version varies by machine; auto-detect the newest
 # version directory under the default install root instead of hardcoding one).
@@ -59,7 +66,7 @@ if(NOT LEVEL_ZERO_INCLUDE_DIR OR NOT LEVEL_ZERO_LIB)
     message(FATAL_ERROR "Level Zero SDK not found. Set SILENCE_ARC_LEVEL_ZERO_ROOT to its install root (containing include/ and lib/).")
 endif()
 message(STATUS "[INFO] Level Zero SDK: ${SILENCE_ARC_LEVEL_ZERO_ROOT}")
-include_directories(${LEVEL_ZERO_INCLUDE_DIR})
+include_directories(SYSTEM ${LEVEL_ZERO_INCLUDE_DIR})
 get_filename_component(LEVEL_ZERO_LIB_DIR "${LEVEL_ZERO_LIB}" DIRECTORY)
 link_directories(${LEVEL_ZERO_LIB_DIR})
 
@@ -116,7 +123,7 @@ endif()
 # PRIVATE (for leaf executables).
 function(silence_arc_sycl_flags TARGET_NAME VIS)
     if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
-        target_compile_options(${TARGET_NAME} ${VIS} -fsycl /EHsc --target=x86_64-pc-windows-msvc -Wno-ignored-attributes)
+        target_compile_options(${TARGET_NAME} ${VIS} -fsycl /EHsc --target=x86_64-pc-windows-msvc -Wno-ignored-attributes -Wall -Wextra)
         target_link_options(${TARGET_NAME} ${VIS} -fsycl --target=x86_64-pc-windows-msvc)
     endif()
 endfunction()

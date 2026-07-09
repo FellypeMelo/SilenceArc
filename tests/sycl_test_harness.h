@@ -44,7 +44,7 @@ public:
         }
         fprintf(stdout, "--- Result: %d/%zu tests passed ---\n", passed, m_tests.size());
         fflush(stdout);
-        return (passed == m_tests.size()) ? 0 : 1;
+        return (static_cast<size_t>(passed) == m_tests.size()) ? 0 : 1;
     }
 
 private:

@@ -69,7 +69,14 @@ void test_sycl_golden_output() {
     }
 
     const auto golden_path = GoldenPath();
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
     const bool regen = std::getenv("SA_REGEN_GOLDEN") != nullptr;
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
     std::ifstream gin(golden_path, std::ios::binary);
 
     if (regen || !gin) {
