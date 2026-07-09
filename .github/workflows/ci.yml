@@ -1,0 +1,44 @@
+name: CI
+
+# The SilenceArc build REQUIRES the full Intel oneAPI toolchain (icx, oneDNN,
+# oneMKL, Level Zero SDK). The GPU quality gates (BackendParity, NNLayers,
+# KernelCorrectness, GPUBridge, PipelineLatencyBench) additionally need a physical
+# Intel Arc GPU. GitHub-hosted runners provide none of these, so this workflow
+# targets a SELF-HOSTED Windows runner registered with the labels below (the
+# developer's Arc machine). On a self-hosted runner without an Arc GPU the
+# GPU-dependent tests GTEST_SKIP() cleanly rather than failing.
+#
+# See docs/DECISIONS.md P6 (CI without an Arc GPU) -- registering the runner is
+# the remaining infra step; the pipeline itself (build + ctest) is defined here.
+
+on:
+  push:
+    branches: [master, "fix/**"]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: [self-hosted, windows, oneapi, arc]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (CMake + Ninja + icx)
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=icx -DCMAKE_C_COMPILER=icx-cl -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (must stay warning-clean under -Wall -Wextra)
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          cmake --build build
+
+      - name: Test (ctest)
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          cd build
+          ctest --output-on-failure
