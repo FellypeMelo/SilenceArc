@@ -233,6 +233,16 @@ if(USE_GTEST)
         GTest::gtest_main
         silence_arc_infra
     )
+
+    # Audio Metrics Test (GTest, pure CPU) -- signal-metering math behind Fix 1.
+    add_executable(test_audio_metrics tests/test_audio_metrics.cpp)
+    target_link_libraries(test_audio_metrics PRIVATE GTest::gtest_main)
+
+    # Attenuation Limit Test (GTest) -- pure dry/wet mix math (CPU, always runs)
+    # plus a GPU integration case that skips when no Arc device is present.
+    add_executable(test_attenuation_limit tests/test_attenuation_limit.cpp)
+    target_link_libraries(test_attenuation_limit PRIVATE GTest::gtest_main silence_arc_infra)
+    silence_arc_sycl_flags(test_attenuation_limit PRIVATE)
 endif()
 
 # Main Application
@@ -249,6 +259,8 @@ if(USE_GTEST)
     add_test(NAME E2ELoopbackTest COMMAND test_e2e_loopback)
     add_test(NAME E2ESamplesTest COMMAND test_e2e_samples)
     add_test(NAME AudioStreamBufferTest COMMAND test_audio_stream_buffer)
+    add_test(NAME AudioMetricsTest COMMAND test_audio_metrics)
+    add_test(NAME AttenuationLimitTest COMMAND test_attenuation_limit)
     add_executable(test_telemetry_provider tests/test_telemetry_provider.cpp)
     target_link_libraries(test_telemetry_provider PRIVATE GTest::gtest_main silence_arc_infra)
     silence_arc_sycl_flags(test_telemetry_provider PRIVATE)

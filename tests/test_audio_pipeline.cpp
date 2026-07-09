@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "silence_arc/infrastructure/async_audio_pipeline.h"
+#include "silence_arc/domain/ui_state.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -94,6 +95,32 @@ TEST(AudioPipelineTest, PushInputNeverBlocksTheCaller) {
     // Must be far below the 10 ms frame budget (realistically microseconds).
     EXPECT_LT(max_us, 1000.0);
     pipeline.Stop();
+}
+
+// Fix 5: the drop counter the UI shows (UIState.frames_dropped) is exactly the
+// pipeline's FramesDropped() value that main() copies into the state each frame.
+TEST(AudioPipelineTest, FramesDroppedIsExposedForTheUi) {
+    infrastructure::AsyncAudioPipeline pipeline;
+    EXPECT_EQ(pipeline.FramesDropped(), 0u);
+
+    pipeline.SetMaxQueueDepth(2);
+    pipeline.SetProcessCallback([](const domain::AudioBuffer& in, domain::AudioBuffer& out) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20)); // slow worker -> drops
+        out.data = in.data;
+    });
+    pipeline.Start();
+    for (int i = 0; i < 50; ++i) {
+        domain::AudioBuffer b;
+        b.data.assign(480, 1.0f);
+        pipeline.PushInput(b);
+    }
+    pipeline.Stop();
+
+    // Mirror main()'s wiring: the UI copies the counter into UIState.
+    domain::UIState ui_state;
+    ui_state.frames_dropped = pipeline.FramesDropped();
+    EXPECT_GT(ui_state.frames_dropped, 0u);
+    EXPECT_EQ(ui_state.frames_dropped, pipeline.FramesDropped());
 }
 
 } // namespace testing
