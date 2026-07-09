@@ -31,12 +31,6 @@ public:
 
     void reset();
 
-    // Test helpers
-    void test_conv2d_mapping();
-    void test_batchnorm_mapping();
-    void test_gru_mapping();
-    void test_linear_mapping();
-
 private:
     void setup_encoder();
     void setup_erb_decoder();

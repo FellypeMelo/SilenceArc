@@ -951,15 +951,8 @@ void OneDNNInferenceEngine::setup_df_decoder() {
     add_grouped_linear(m_df_decoder_layers, "df_dec.df_out.0.weight", gru_out_nchw, df_linear_out, 16);
     
     // 5. Final Sum: df_linear_out + df_convp
-    // Need to ensure shapes match [1, 960, 1, 1] vs [1, 10, 1, 96]
-    // Reorder df_p to flat coefficients
-    memory df_p_flat;
-    auto df_p_dims = df_p.get_desc().get_dims(); // [1, 10, 1, 96]
-    memory::dims flat_dims = {1, 960, 1, 1};
-    memory::dims flat_strides = {960, 1, 960, 960}; // Access as [bin][order*2]
-    auto df_p_view_md = memory::desc(flat_dims, memory::data_type::f32, flat_strides);
-    
-    // The sum must be done in SYCL to handle the [F, O*2] vs [F*O*2] mapping correctly
+    // The sum is done in SYCL to handle the [F, O*2] vs [F*O*2] mapping correctly
+    // (df_p is [1, 10, 1, 96] -> [order*2][bin]; df_linear_out is flat [960]).
     OneDNNLayer final_sum;
     final_sum.name = "DF_Final_Sum";
     float* p_ptr = static_cast<float*>(df_p.get_data_handle());
@@ -1060,10 +1053,5 @@ void OneDNNInferenceEngine::reset() {
         m_queue.fill(it->second.get_data_handle(), 0.0f, size).wait();
     }
 }
-
-void OneDNNInferenceEngine::test_conv2d_mapping() {}
-void OneDNNInferenceEngine::test_batchnorm_mapping() {}
-void OneDNNInferenceEngine::test_gru_mapping() {}
-void OneDNNInferenceEngine::test_linear_mapping() {}
 
 } // namespace silence_arc::infrastructure

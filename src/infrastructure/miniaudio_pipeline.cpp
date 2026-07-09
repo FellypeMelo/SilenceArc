@@ -15,15 +15,6 @@ struct MiniaudioPipeline::Impl {
     domain::IAudioPipeline::ProcessCallback user_callback;
     std::mutex callback_mutex;
 
-    static bool HexToDeviceId(const std::string& hex, ma_device_id& id) {
-        if (hex.length() != sizeof(ma_device_id) * 2) return false;
-        for (size_t i = 0; i < sizeof(ma_device_id); ++i) {
-            std::string byte_str = hex.substr(i * 2, 2);
-            ((unsigned char*)&id)[i] = (unsigned char)std::stoul(byte_str, nullptr, 16);
-        }
-        return true;
-    }
-
     static void DataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
         if (!pDevice->pUserData) return;
         auto* impl = static_cast<Impl*>(pDevice->pUserData);

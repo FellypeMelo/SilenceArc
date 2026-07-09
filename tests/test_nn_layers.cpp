@@ -29,8 +29,6 @@ int main() {
             return 1;
         }
 
-        engine.test_gru_mapping();
-        
         std::vector<float> dummy_erb(32, 1.0f);
         std::vector<float> output_mask(32, 0.0f);
         
