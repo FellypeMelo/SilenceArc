@@ -9,7 +9,7 @@ Interfaces atuais. Não é lib pública instalável — são as seams internas +
 bool   Init(const std::string& model_path);      // GPU ignora path (usa models/df3_weights); CPU usa tar.gz ONNX
 size_t GetFrameLength() const;                    // 480 em ambos backends
 float  ProcessFrame(const float* in, float* out); // 480 in → 480 out; retorno: LSNR (CPU) / 0.0 (GPU) / -100 = erro
-void   SetAttenuationLimit(float limit_db);       // CPU: efetivo; GPU: NO-OP hoje
+void   SetAttenuationLimit(float limit_db);       // efetivo em ambos: mix dry/wet pós-inferência, 10^(-|db|/20) (|db|>=100 = full wet, <0.01 = bypass)
 void   SetDeepFilteringEnabled(bool enabled);     // GPU: efetivo; CPU: no-op
 ```
 Impls: `SyclNoiseSuppressor` (GPU), `DeepFilterAdapter` (CPU/Rust).

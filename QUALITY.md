@@ -17,7 +17,7 @@ Regra: nenhum merge sem TODOS os gates abaixo. Denso. Sem exceção silenciosa.
 - Meta de PRODUTO: latência end-to-end (mic→speaker) < 20ms. Ainda NÃO medida — quando houver medição, vira gate.
 
 ## 4. Zero warnings novos
-- Não introduzir warning novo. (Nota: build hoje NÃO liga `-Wall`; ao ligar, zerar antes de exigir o gate.)
+- Build liga `-Wall -Wextra` (icx) na infra lib + todos os executáveis; hoje está limpo. Não introduzir warning novo. Terceiros (miniaudio/imgui/Level Zero) são SYSTEM; imgui silenciado com `-w`.
 
 ## 5. Docs atualizados
 - Mudou arquitetura/pipeline → atualizar `docs/ARCHITECTURE.md` / `docs/ENGINE.md`.

@@ -9,6 +9,7 @@ Regra: toda mudança no hot path = nova linha ANTES e DEPOIS. Nunca sobrescrever
 | Data | Commit | GPU | Driver | Modelo | avg ms | p50 | p90 | p99 | max | CPU% | Notas |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-07-07 | 2129d83 | Arc B580 | n/a | DFN3 nativo oneDNN | 3.863 | 4.232 | 4.462 | 4.850 | 6.202 | n/d | pós-refactor de syncs; fonte: build/Testing LastTest.log |
+| 2026-07-09 | fix/audit-sweep-2026-07 | Arc B580 | n/a | DFN3 nativo oneDNN | 2.387 | 2.080 | 3.306 | 4.334 | 13.558 | n/d | pós audit sweep (atten-limit é pós-inferência, fora do sycl_process medido); sem regressão vs baseline. 10k frames |
 
 ## End-to-end (mic → speaker) — pendente harness
 
