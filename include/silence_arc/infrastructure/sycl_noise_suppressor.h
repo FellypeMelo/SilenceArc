@@ -20,6 +20,10 @@ public:
     void SetDeepFilteringEnabled(bool enabled) override;
 
 private:
+    // Linear dry-signal weight for the post-inference attenuation-limit mix,
+    // derived from the requested limit in dB with the same formula the CPU
+    // (libDF) fallback uses. 0 => fully wet (no limit), 1 => fully dry (bypass).
+    float dry_mix_ = 0.0f;
 };
 
 } // namespace infrastructure
