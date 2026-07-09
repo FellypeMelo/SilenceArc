@@ -12,6 +12,9 @@
 #include <windows.h>
 #include <thread>
 #include <chrono>
+#include <cmath>
+#include <vector>
+#include <algorithm>
 
 int main() {
     std::cout << "Starting Silence Arc..." << std::endl;
@@ -82,7 +85,23 @@ int main() {
         auto end_time = std::chrono::steady_clock::now();
         auto process_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         telemetry_provider.SetProcessingLatency(process_duration.count() / 1000.0f);
-        ui.UpdateSignalLevels(0.5f, 0.5f, ui.GetState().noise_suppression_enabled ? 10.0f : 0.0f);
+
+        // Real signal metering, computed here on the worker thread (never on the
+        // RT device callback). RMS of f32 samples in [-1,1] already maps to the
+        // 0..1 range the ProgressBar meters expect.
+        auto rms = [](const std::vector<float>& d) -> float {
+            if (d.empty()) return 0.0f;
+            double acc = 0.0;
+            for (float s : d) acc += static_cast<double>(s) * s;
+            return static_cast<float>(std::sqrt(acc / static_cast<double>(d.size())));
+        };
+        const float in_level = std::min(rms(frame_in.data), 1.0f);
+        const float out_level = std::min(rms(frame_out.data), 1.0f);
+        float reduction_db = 0.0f;
+        if (ui.GetState().noise_suppression_enabled && out_level > 1e-6f && in_level > out_level) {
+            reduction_db = 20.0f * std::log10(in_level / out_level);
+        }
+        ui.UpdateSignalLevels(in_level, out_level, reduction_db);
     });
     async.Start();
 
