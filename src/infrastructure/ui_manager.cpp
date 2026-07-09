@@ -287,6 +287,7 @@ void UIManager::Render() {
     ImGui::Text("GPU Util: %.1f%%", state_.telemetry.gpu_utilization * 100.0f);
     ImGui::Text("Latency: %.2f ms", state_.telemetry.processing_latency_ms);
     ImGui::Text("VRAM: %.1f MB", state_.telemetry.memory_footprint_mb);
+    ImGui::Text("Frames Dropped: %llu", static_cast<unsigned long long>(state_.frames_dropped));
   }
 
   ImGui::End();

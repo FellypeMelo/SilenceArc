@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 #include "silence_arc/domain/telemetry_provider.h"
 
 namespace silence_arc {
@@ -26,6 +27,7 @@ struct UIState {
 
     // Telemetry
     TelemetryData telemetry;
+    uint64_t frames_dropped = 0; // Bounded-queue drops from the async pipeline
 
     // Configuration
     float suppression_limit_db = 40.0f; // 0 (min) to 100 (max)

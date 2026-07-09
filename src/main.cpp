@@ -169,6 +169,8 @@ int main() {
 
         // Update telemetry from live provider
         ui.UpdateTelemetry(telemetry_provider.GetLatestData());
+        // Surface the async pipeline's bounded-queue drop counter in the UI.
+        ui.GetState().frames_dropped = async.FramesDropped();
 
         ui.Render();
         ui.EndFrame();
