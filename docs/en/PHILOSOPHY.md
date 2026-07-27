@@ -3,7 +3,7 @@
 ## The Vision
 SilenceArc is born from a simple but powerful idea: **Intel Arc GPUs deserve a first-class, native audio processing ecosystem.** While other vendors have established noise suppression solutions, the Intel Arc (Xe) architecture represents a massive opportunity for high-performance AI inference that has remained largely untapped in the consumer audio space.
 
-SilenceArc is the world's first real-time noise suppression application built from the ground up to run natively on Intel Arc graphics cards.
+SilenceArc is built from the ground up to run its noise-suppression inference natively on Intel Arc graphics cards, via SYCL and oneDNN rather than a general-purpose inference runtime. This is a description of what the engine does, not a claim of priority — no comparison against other native Intel Arc audio projects has been made or is asserted here.
 
 ## Why Intel Arc?
 Intel Arc GPUs, particularly the B-Series (Battlemage) and A-Series (Alchemist), feature dedicated **XMX (Xe Matrix eXtensions)** units. These hardware accelerators are specifically designed for matrix multiplication—the heartbeat of neural networks. By targeting this hardware directly, SilenceArc achieves:
