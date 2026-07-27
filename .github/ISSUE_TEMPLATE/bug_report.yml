@@ -1,0 +1,83 @@
+name: Bug report
+description: Report a problem building, running, or using SilenceArc.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Most of SilenceArc's test suite and GPU code path require a physical Intel Arc GPU, so please be specific about your hardware — it's the difference between a reproducible bug and "works on my machine."
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug. What did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands or actions, in order.
+      placeholder: |
+        1. cmake -G "Ninja" ...
+        2. cmake --build . --config Release
+        3. .\build\silence_arc.exe
+        4. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Which backend were you using?
+      options:
+        - GPU (SyclNoiseSuppressor, Intel Arc)
+        - CPU fallback (DeepFilterAdapter)
+        - Not sure / didn't get that far
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU model (if applicable)
+      placeholder: e.g. Intel Arc B580
+    validations:
+      required: false
+
+  - type: input
+    id: oneapi-version
+    attributes:
+      label: Intel oneAPI Base Toolkit version
+      placeholder: e.g. 2024.2
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: e.g. Windows 11 23H2
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant console output / logs
+      description: Paste any `[INFO]`/`[ERROR]` output from the console window, or CMake configure/build errors. This will be rendered as a code block, so no need to add backticks.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked docs/en/SETUP.md and docs/en/USAGE.md and this isn't a documented, expected limitation.
+          required: false
+        - label: This is not a security vulnerability report (if it is, see SECURITY.md instead).
+          required: true

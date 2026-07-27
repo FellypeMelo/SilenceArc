@@ -1,0 +1,15 @@
+# Maps the several git identities used by this repository's author onto one.
+#
+# The same person committed under three identities over time: two display names
+# ("Fellype Melo" / "Fellype Samuel"), two spellings of the same address that
+# differ only in the leading capital, and GitHub's web-editor noreply address.
+# Without this file, `git log`, `git shortlog -sne` and most contribution
+# analysis tools report them as separate contributors.
+#
+# Format: Canonical Name <canonical@email>  Commit Name <commit@email>
+
+Fellype Melo <fellypesamuel1@gmail.com> Fellype Samuel <fellypesamuel1@gmail.com>
+Fellype Melo <fellypesamuel1@gmail.com> Fellype Samuel <Fellypesamuel1@gmail.com>
+Fellype Melo <fellypesamuel1@gmail.com> Fellype Melo <Fellypesamuel1@gmail.com>
+Fellype Melo <fellypesamuel1@gmail.com> Fellype Samuel <90467208+FellypeMelo@users.noreply.github.com>
+Fellype Melo <fellypesamuel1@gmail.com> Fellype Melo <90467208+FellypeMelo@users.noreply.github.com>

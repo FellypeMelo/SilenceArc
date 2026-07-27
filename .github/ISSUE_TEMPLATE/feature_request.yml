@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest an idea, enhancement, or new capability for SilenceArc.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before requesting a feature, it's worth checking the [Roadmap section of the README](../../README.md#roadmap) — Phase 3 (GPU neural-network porting) is the current focus, and some things you might expect are already tracked there.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that SilenceArc doesn't support today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen? If you have thoughts on where this fits in the architecture (domain vs. infrastructure, GPU vs. CPU path), mention it.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the project does this affect?
+      options:
+        - GPU engine (SYCL/oneDNN)
+        - CPU fallback (DeepFilterAdapter / Rust libDF)
+        - Audio pipeline (miniaudio, WASAPI/ASIO)
+        - UI (Dear ImGui)
+        - Build system / tooling
+        - Documentation
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds you're currently using, or other approaches you considered.
+    validations:
+      required: false
